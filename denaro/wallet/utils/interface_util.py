@@ -391,7 +391,7 @@ class UserPrompts:
             time.sleep(0.1)
 
     @staticmethod
-    def wait_for_input(timeout):
+    def wait_for_input(timeout:int, from_gui=False, callback_object=None):
         """
         Overview:
         Waits for user input for a specified time before proceeding.
@@ -407,12 +407,16 @@ class UserPrompts:
             global user_input_received
             user_input_received = False
 
-            # Create a threading event to stop listening for input
-            stop_event = threading.Event()
+            
 
             # Start a new thread to listen for user input
-            user_input_thread = threading.Thread(target=UserPrompts.user_input_listener, args=(stop_event,))
-            user_input_thread.start()
+            if from_gui:
+                callback_object.post_input_listener_dialog()
+            else:
+                # Create a threading event to stop listening for input
+                stop_event = threading.Event()
+                user_input_thread = threading.Thread(target=UserPrompts.user_input_listener, args=(stop_event,))
+                user_input_thread.start()
 
             # Initialize timing variables
             start_time = time.time()
@@ -420,21 +424,32 @@ class UserPrompts:
 
             # Loop until timeout
             while time.time() - start_time < timeout:
+                user_input_received = callback_object.root.stored_data.ask_bool_result
+        
                 # Check for user input
                 if user_input_received:
-                    print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation... ")
-                    print('Operation canceled.')
-                    stop_event.set()
+
+                    if not from_gui:
+                        print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation... ")
+                        print('Operation canceled.')
+                        stop_event.set()
                     return False                
                 # Countdown logic
                 seconds_passed = int(time.time() - start_time)
                 if last_second_passed != seconds_passed:
                     last_second_passed = seconds_passed
                     time_remaining = timeout - seconds_passed
-                    print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation...", end='')
+                    if from_gui:
+                        callback_object.root.stored_data.input_listener_time_remaining = time_remaining
+                    else:
+                        print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation...", end='')
                 time.sleep(0.1)
+            
+            callback_object.root.stored_data.input_listener_time_remaining = 0
+            
             # Stop listening for input
-            stop_event.set()
+            if not from_gui:
+                stop_event.set()
             return True
         
         # Handle exit on keyboard interrupt
@@ -445,7 +460,7 @@ class UserPrompts:
             sys.exit(1)  
 
     @staticmethod
-    def backup_and_overwrite_helper(data, filename, password, encrypt, backup, disable_warning, deterministic):
+    def backup_and_overwrite_helper(data, filename, password, encrypt, backup, disable_warning, deterministic, from_gui=False, callback_object=None):
         """
         Overview:
         Handles the logic for backing up and overwriting wallet data.
@@ -473,9 +488,14 @@ class UserPrompts:
             backup = "n"
 
         # Handle the backup preference
-        perform_backup = UserPrompts.confirmation_prompt("WARNING: Wallet already exists. Do you want to back it up? [y/n] (or type '/q' to exit the script): ", backup)
-        if perform_backup is None:
-            return
+        if from_gui:
+            perform_backup = callback_object.post_confirmation_prompt('Backup Prompt', 'Wallet file already exists. Do you want to back it up?')
+        else:
+            perform_backup = UserPrompts.confirmation_prompt("WARNING: Wallet already exists. Do you want to back it up? [y/n] (or type '/q' to exit the script): ", backup)
+
+            if perform_backup is None:
+                return
+        
         if perform_backup:
             # Construct the backup filename
             base_filename = os.path.basename(filename)
@@ -484,26 +504,35 @@ class UserPrompts:
             try:
                 # Create the backup
                 shutil.copy(filename, backup_path)
+                if from_gui:
+                    callback_object.show_messagebox("Info", f"Backup created at {backup_path}")
                 print(f"Backup created at {backup_path}\n")
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                 return True
 
             except Exception as e:
+                if from_gui:
+                    callback_object.show_messagebox("Error", f"Could not create backup. Please see console log.")
                 logging.error(f" Could not create backup: {e}\n")
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                 return
         else:            
             if not disable_warning:
-                if not backup:
-                    print()
-                logging.critical("You have chosen not to back up the existing wallet.")
-                perform_overwrite = UserPrompts.confirmation_prompt("Proceeding will OVERWRITE the existing wallet. Continue? [y/n] (or type '/q' to exit the script): ")
+                
+
+                if from_gui:
+                    perform_overwrite = callback_object.post_confirmation_prompt('Overwrite Prompt', 'You have chosen not to back up the existing wallet.\n\nProceeding will OVERWRITE the existing wallet. Do you want to Continue?')
+                else:
+                    if not backup:
+                        print()
+                    logging.critical("You have chosen not to back up the existing wallet.")
+                    perform_overwrite = UserPrompts.confirmation_prompt("Proceeding will OVERWRITE the existing wallet. Do you want to Continue? [y/n] (or type '/q' to exit the script): ")
+                    if perform_overwrite is None:
+                        return
             else:
                 perform_overwrite = True
-            # Handle the overwrite preference
-            #perform_overwrite = UserPrompts.get_overwrite_preference(disable_warning)
-            if perform_overwrite is None:
-                return
+            
+            
             if perform_overwrite:
                 # Print messages based on the CLI boolean values
                 if disable_warning:
@@ -529,16 +558,24 @@ class UserPrompts:
 
                 # If the wallet is encrypted and the password and hmac have not yet been varified then enter while loop
                 if encrypt and not (password_verified and hmac_verified) and data:
+                    
                     while True:
-                        print()
-                        # Prompt user for password
-                        password_input = UserPrompts.get_password(password=password if password and (password_verified and hmac_verified) else None)
+                        if from_gui:
+                            password_input = callback_object.post_password_dialog_with_confirmation(title='Authentication Required', msg='Wallet is encrypted. Authentication is required to overwrite it.\n')
+                            if password_input is None:
+                                data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
+                                return
+                        else:
+                            print()
+                            # Prompt user for password
+                            password_input = UserPrompts.get_password(password=password if password and (password_verified and hmac_verified) else None)
+                        
                         # Verify the password and HMAC
                         password_verified, hmac_verified, _ = verification_util.Verification.verify_password_and_hmac(data, password_input, base64.b64decode(data["wallet_data"]["hmac_salt"]), base64.b64decode(data["wallet_data"]["verification_salt"]), deterministic)
-    
+                        
                         # Based on password verification, update or reset the number of failed attempts
-                        data = data_manipulation_util.DataManipulation.update_or_reset_attempts(data, filename, base64.b64decode(data["wallet_data"]["hmac_salt"]), password_verified, deterministic)
-                        data_manipulation_util.DataManipulation._save_data(filename,data)
+                        data, attempts_msg, warning_msg, warning_type, data_erased_msg = data_manipulation_util.DataManipulation.update_or_reset_attempts(data, filename, base64.b64decode(data["wallet_data"]["hmac_salt"]), password_verified, deterministic, from_gui=from_gui, callback_object=callback_object)
+                        data_manipulation_util.DataManipulation._save_data(filename, data)
                         
                         # If wallet data has not erased yet verify the password and HMAC again
                         if data:
@@ -546,11 +583,11 @@ class UserPrompts:
                         
                         # Handle error if the password and HMAC verification failed
                         if data and not (password_verified and hmac_verified):
-                            logging.error("Authentication failed or wallet data is corrupted.")
-                       
+                            UserPrompts.handle_auth_error_messages(data, attempts_msg, warning_msg, warning_type, data_erased_msg, from_gui, callback_object)
+
                         # Handle error if wallet data was erased then continue
                         elif not data:
-                            logging.error("Authentication failed or wallet data is corrupted.")
+                            UserPrompts.handle_auth_error_messages(data, attempts_msg, warning_msg, warning_type, data_erased_msg, from_gui, callback_object)
                             break                        
                         # If the password and HMAC verification passed then continue
                         else:
@@ -558,18 +595,31 @@ class UserPrompts:
 
                 # Check data was not erased due to failed password attempts 
                 if data:
-                    print()
+                    if not from_gui:
+                        print()
                     # Call wait_for_input and allow up to 5 seconds for the user to cancel overwrite operation
-                    if not UserPrompts.wait_for_input(timeout=5):
+                    if not UserPrompts.wait_for_input(timeout=10, from_gui=from_gui, callback_object=callback_object):
+                        if from_gui:
+                            callback_object.root.stored_data.ask_bool_result = None
+                            callback_object.root.wallet_thread_manager.dialog_event.wait()
                         data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                         return
                     # If no input is recieved within 5 seconds then continue
                     else:
-                        print()
+                        if from_gui:
+                            callback_object.root.stored_data.ask_bool_result = None
+                            callback_object.root.wallet_thread_manager.dialog_event.wait()
+                        else:
+                            print()
                         try:
                             # Overwrite wallet with empty data
-                            data_manipulation_util.DataManipulation.delete_wallet(filename, data)
-                            print("Wallet data has been erased.\n")
+                            data_manipulation_util.DataManipulation.delete_wallet(filename, data, from_gui=from_gui, callback_object=callback_object)
+                            if from_gui:
+                                callback_object.show_messagebox("Info", "Wallet data has been erased.")
+                                if callback_object.root.progress_bar["value"] != 0:
+                                    callback_object.root.progress_bar.config(maximum=0, value=0)
+                            else:
+                                print("Wallet data has been erased.\n")
                             time.sleep(0.5)
                         except Exception as e:
                             data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -584,7 +634,29 @@ class UserPrompts:
                 return
     
     @staticmethod
-    def handle_2fa_validation(data, totp_code=None):
+    def handle_auth_error_messages(data, attempts_msg, warning_msg, warning_type, data_erased_msg, from_gui=False, callback_object=None):
+        auth_error_msg = "Authentication failed or wallet data is corrupted."
+        new_line = '\n\n'
+        
+        if attempts_msg and data:
+            print(attempts_msg)        
+        
+        if warning_msg:
+            if warning_type == '1':
+                logging.warning(warning_msg)
+
+            if warning_type == '2':
+                logging.critical(warning_msg)
+                
+        logging.error(auth_error_msg)
+
+        if from_gui:
+            print()
+            gui_error_msg = f"{attempts_msg+new_line if attempts_msg else ''}{'WARNING: ' if warning_type == '1' else ''}{'CRITICAL: ' if warning_type == '2' else ''}{warning_msg+new_line if warning_msg else ''}{data_erased_msg+new_line if data_erased_msg else ''}{auth_error_msg}"
+            callback_object.show_messagebox("Error", gui_error_msg)
+
+    @staticmethod
+    def handle_2fa_validation(data, totp_code=None, from_gui=False, callback_object=None):
         """
         Overview:
         Handles Two-Factor Authentication (2FA) validation.
@@ -602,25 +674,36 @@ class UserPrompts:
             # Check if a TOTP code was already provided
             if not totp_code:
                 # Get TOTP code from user input
-                totp_code = input("Please enter the Two-Factor Authentication code from your authenticator app (or type '/q' to exit the script): ")
+                if not from_gui:
+                    totp_code = input("Please enter the Two-Factor Authentication code from your authenticator app (or type '/q' to exit the script): ")
+                else:
+                    totp_code = callback_object.post_ask_string("2FA Required","Two-Factor Authentication is required to decrypt this wallet.\nPlease enter the 6-digit Two-Factor Authentication code from your authenticator app:")
+                    if totp_code == None:
+                        return False
                 # Exit if the user chooses to quit
-                if totp_code.lower() == '/q':
-                    logging.info("User exited before providing a valid Two-Factor Authentication code.\n")
+                if not from_gui and totp_code.lower() == '/q':
+                    print("User exited before providing a valid Two-Factor Authentication code.\n")       
                     data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                     return False
                 # Check if the totp_code is provided
                 if not totp_code:
                     logging.error("No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.\n")
+                    if from_gui:
+                        callback_object.show_messagebox("Error", "No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.")
                     continue
                 # Validate that the TOTP code is a 6-digit integer
                 try:
                     int(totp_code)
                     if len(totp_code) != 6:
                         logging.error("Two-Factor Authentication code should contain 6 digits. Please try again.\n")
+                        if from_gui:
+                            callback_object.show_messagebox("Error", "Two-Factor Authentication code should contain 6 digits. Please try again.")
                         totp_code = None
                         continue
                 except ValueError:
                     logging.error("Two-Factor Authentication code should be an integer. Please try again.\n")
+                    if from_gui:
+                        callback_object.show_messagebox("Error", "Two-Factor Authentication code should be an integer. Please try again.")
                     totp_code = None
                     continue
             # Validate the TOTP code using utility method
@@ -630,6 +713,8 @@ class UserPrompts:
                 return result
             else:
                 logging.error("Authentication failed. Please try again.\n")
+                if from_gui:
+                    callback_object.show_messagebox("Error", "Authentication failed. Please try again.")
                 # Reset TOTP code and continue the loop
                 totp_code = None
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])

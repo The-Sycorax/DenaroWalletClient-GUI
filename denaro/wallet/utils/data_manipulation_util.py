@@ -46,7 +46,7 @@ class DataManipulation:
         return data
 
     @staticmethod
-    def update_or_reset_attempts(data, filename, hmac_salt, password_verified, deterministic):
+    def update_or_reset_attempts(data, filename, hmac_salt, password_verified, deterministic, from_gui=False, callback_object=None):
         """
         Updates or resets failed login attempts based on whether the password was verified.
         
@@ -96,23 +96,35 @@ class DataManipulation:
                 data["wallet_data"][key[0]][key[1]] = updated_data
         
         data["wallet_data"]["totp_secret"] = data["wallet_data"]["totp_secret"][0]
+
+        attempts_msg = None
+        warning_msg = None
+        warning_type = None
+        data_erased_msg = None
         if not password_verified:
             if attempts_left:
-                print(f"\nPassword Attempts Left: {attempts_left}")
+                attempts_msg = f"\nPassword Attempts Left: {attempts_left}"
             if attempts_left <= 5 and attempts_left > 3 and attempts_left != 0:
-                logging.warning(f"Password attempts left are approaching 0, after which any existing wallet data will be ERASED AND POTENTIALLY UNRECOVERABLE!!")
+                warning_msg = f"Password attempts are approaching 0, afterwards any existing wallet data will be erased and potentially unrecoverable!!"
+                warning_type = "1"
             if attempts_left <= 3 and attempts_left != 0:
-                logging.critical(f"PASSWORD ATTEMPTS LEFT ARE APPROACHING 0, AFTER WHICH ANY EXISTING WALLET DATA WILL BE ERASED AND POTENTIALLY UNRECOVERABLE!!")
+                warning_msg = "PASSWORD ATTEMPTS ARE APPROACHING 0, AFTERWARDS ANY EXISTING WALLET DATA WILL BE ERASED AND POTENTIALLY UNRECOVERABLE!!"
+                warning_type = "2"
             if attempts_left == 0:
-                print(f"\nPassword Attempts Left: {attempts_left}")
-                DataManipulation.delete_wallet(filename, data)
-                print("Wallet data has been permanetly erased.")
+                attempts_msg = f"\nPassword Attempts Left: {attempts_left}"
+                print(attempts_msg)
+                DataManipulation.delete_wallet(filename, data, from_gui=from_gui, callback_object=callback_object)
+                if os.path.normpath(str(filename)) == os.path.normpath(str(callback_object.root.stored_data.wallet_file)):
+                    callback_object.root.stored_data.wallet_deleted = True
+                callback_object.root.gui_utils.update_wallet_menu()
+                data_erased_msg = "Wallet data has been erased."
+                print(data_erased_msg)
                 time.sleep(0.5)
                 data = None
-        
+        result = data, attempts_msg, warning_msg, warning_type, data_erased_msg
         # Securely delete sensitive variables
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not data])
-        return data
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
     
     @staticmethod
     def secure_delete(var):
@@ -192,7 +204,7 @@ class DataManipulation:
             return
 
     @staticmethod
-    def overwrite_with_pattern(file, pattern, file_size):
+    def overwrite_with_pattern(file, pattern, file_size, from_gui=False, callback_object=None):
         """Overview:
             This function is designed for secure file overwriting. It methodically replaces the content
             of a file with a given pattern. It continuously writes the pattern to the file, ensuring complete
@@ -217,16 +229,17 @@ class DataManipulation:
                 bytes_written += write_size
 
                 # Update progress at intervals
-                if bytes_written % update_interval == 0 or bytes_written == file_size:
-                    DataManipulation.dot_count += 1
-                    if DataManipulation.dot_count >= 4:
-                        DataManipulation.dot_count = 0
-                        DataManipulation.iteration_count += 1
-                        if DataManipulation.iteration_count > 4:
-                            DataManipulation.iteration_count = 1
-                    sys.stdout.write("\r" + " " * 50)  # Clear with 50 spaces
-                    sys.stdout.write("\rWallet Annihilation in progress" + "." * DataManipulation.iteration_count)
-                    sys.stdout.flush()
+                if not from_gui:
+                    if bytes_written % update_interval == 0 or bytes_written == file_size:
+                        DataManipulation.dot_count += 1
+                        if DataManipulation.dot_count >= 4:
+                            DataManipulation.dot_count = 0
+                            DataManipulation.iteration_count += 1
+                            if DataManipulation.iteration_count > 4:
+                                DataManipulation.iteration_count = 1
+                        sys.stdout.write("\r" + " " * 50)  # Clear with 50 spaces
+                        sys.stdout.write("\rWallet Annihilation in progress" + "." * DataManipulation.iteration_count)
+                        sys.stdout.flush()
 
             file.flush()
             os.fsync(file.fileno())
@@ -238,7 +251,7 @@ class DataManipulation:
             logging.error(f"Unexpected error during file overwrite: {e}")
     
     @staticmethod
-    def DoD_5220_22_M_wipe(file, file_size):
+    def DoD_5220_22_M_wipe(file, file_size, from_gui=False, callback_object=None):
         """Overview:
             Implements the DoD 5220.22-M wiping standard, a recognized method for secure file erasure.
             This function executes multiple overwrite passes, using a mix of zero bytes, one bytes, and
@@ -252,25 +265,27 @@ class DataManipulation:
         try:
         #print("Using: DoD_5220_22_M_wipe")
             for i in range(1, 7):
+                if from_gui:
+                    callback_object.root.stored_data.progress_bar_increment = True
                 # Pass 1, 4, 5: Overwrite with 0x00
                 if i in [1, 4, 5]:
-                    DataManipulation.overwrite_with_pattern(file, b'\x00' * file_size, file_size)
+                    DataManipulation.overwrite_with_pattern(file, b'\x00' * file_size, file_size, from_gui=from_gui)
     
                 # Pass 2, 6: Overwrite with 0xFF
                 if i in [2, 6]:
-                    DataManipulation.overwrite_with_pattern(file, b'\xFF' * file_size, file_size)
+                    DataManipulation.overwrite_with_pattern(file, b'\xFF' * file_size, file_size, from_gui=from_gui)
     
                 # Pass 3, 7: Overwrite with random data
                 if i in [3, 7]:
                     random_bytes = bytearray(random.getrandbits(8) for _ in range(file_size))
-                    DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size)
-                    DataManipulation.overwrite_with_pattern(file, os.urandom(64), file_size)
+                    DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size, from_gui=from_gui)
+                    DataManipulation.overwrite_with_pattern(file, os.urandom(64), file_size, from_gui=from_gui)
         except Exception as e:
             print()
             logging.error(f"Error during DoD 5220.22-M Wipe: {e}")
 
     @staticmethod
-    def Schneier_wipe(file, file_size):
+    def Schneier_wipe(file, file_size, from_gui=False, callback_object=None):
         """Overview:
             Adheres to the Schneier wiping protocol, a multi-pass data destruction method. The first two
             passes use fixed byte patterns (0x00 and 0xFF), followed by subsequent passes that introduce
@@ -283,23 +298,25 @@ class DataManipulation:
         """
         try:
             for i in range(1, 7):
+                if from_gui:
+                    callback_object.root.stored_data.progress_bar_increment = True
                 if i in [1]:
                     # First pass: overwrite with 0x00
-                    DataManipulation.overwrite_with_pattern(file, b'\x00' * file_size, file_size)
+                    DataManipulation.overwrite_with_pattern(file, b'\x00' * file_size, file_size, from_gui=from_gui)
                 if i in [2]:
                     # Second pass: overwrite with 0xFF
-                    DataManipulation.overwrite_with_pattern(file, b'\xFF' * file_size, file_size)
+                    DataManipulation.overwrite_with_pattern(file, b'\xFF' * file_size, file_size, from_gui=from_gui)
                 if i in [3, 4, 5, 6, 7]:
                     # Additional passed: overwrite with random data
                     random_bytes = bytearray(random.getrandbits(8) for _ in range(file_size))
-                    DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size)
-                    DataManipulation.overwrite_with_pattern(file, os.urandom(64), file_size)
+                    DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size, from_gui=from_gui)
+                    DataManipulation.overwrite_with_pattern(file, os.urandom(64), file_size, from_gui=from_gui)
         except Exception as e:
             print()
             logging.error(f"Error during Schneier Wipe: {e}")
 
     @staticmethod
-    def Gutmann_wipe(file, file_size):
+    def Gutmann_wipe(file, file_size, from_gui=False, callback_object=None):
         """Overview:
             Executes the Gutmann wiping method, known for its extensive pattern use. It cycles through
             35 different patterns, blending predefined and random patterns to overwrite data. This method
@@ -313,6 +330,8 @@ class DataManipulation:
         try:
             #print("Gutmann_wipe")
             for i in range(1, 35):
+                if from_gui:
+                    callback_object.root.stored_data.progress_bar_increment = True
                 if i in [1, 2, 3, 4, 32, 33, 34, 35]:
                     pattern = bytearray(random.getrandbits(8) for _ in range(file_size)) * file_size
                 else:
@@ -341,13 +360,13 @@ class DataManipulation:
                 # Create the final pattern
                 final_pattern = pattern * repeat_count + pattern[:remainder]
                 # Overwrite with the final pattern
-                DataManipulation.overwrite_with_pattern(file, final_pattern, file_size)
+                DataManipulation.overwrite_with_pattern(file, final_pattern, file_size, from_gui=from_gui)
         except Exception as e:
             print()
             logging.error(f"Error during Gutmann Wipe: {e}")
     
     @staticmethod
-    def wallet_annihilation(filename, file, data, file_size):
+    def wallet_annihilation(filename, file, data, file_size, from_gui=False, callback_object=None):
         """Overview:
             This function first encrypts the wallet data, adding a layer of security, and then proceeds
             to a comprehensive wiping process. It utilizes a combination of the DoD 5220.22-M, Schneier, 
@@ -374,22 +393,24 @@ class DataManipulation:
             time.sleep(0.5)
             
             random_bytes = bytearray(random.getrandbits(8) for _ in range(file_size))
-            DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size)
+            DataManipulation.overwrite_with_pattern(file, random_bytes * file_size, file_size, from_gui=from_gui, callback_object=callback_object)
+            if from_gui:
+                callback_object.root.stored_data.progress_bar_increment = True
             time.sleep(0.1)
 
-            DataManipulation.DoD_5220_22_M_wipe(file, file_size)
+            DataManipulation.DoD_5220_22_M_wipe(file, file_size, from_gui=from_gui, callback_object=callback_object)
             time.sleep(0.1)
 
-            DataManipulation.Schneier_wipe(file, file_size)
+            DataManipulation.Schneier_wipe(file, file_size, from_gui=from_gui, callback_object=callback_object)
             time.sleep(0.1)
 
-            DataManipulation.Gutmann_wipe(file, file_size)
+            DataManipulation.Gutmann_wipe(file, file_size, from_gui=from_gui, callback_object=callback_object)
         except Exception as e:
             print()
             logging.error(f"Error during Wallet Annihilation: {e}")
 
     @staticmethod
-    def delete_wallet(file_path, data, passes=1):
+    def delete_wallet(file_path, data, passes=1, from_gui=False, callback_object=None):
         """Overview:
             This is the main function for securely deleting wallet files. It locks the file to prevent
             concurrent access, then executing the 'wallet_annihilation' method, which combines multiple
@@ -402,6 +423,11 @@ class DataManipulation:
             - data: Data used in the annihilation process.
             - passes: The number of annihilation cycles to execute.
         """
+
+        if from_gui:
+            callback_object.configure_progress_bar(max_value=52/3)
+            callback_object.root.stored_data.operation_mode = "wallet_annihilation"
+
         if not os.path.exists(file_path):
             raise ValueError("File does not exist")
         
@@ -414,7 +440,7 @@ class DataManipulation:
                         raise ValueError("File is empty")
                     
                     for _ in range(passes):
-                        DataManipulation.wallet_annihilation(file_path, file, data, file_size)
+                        DataManipulation.wallet_annihilation(file_path, file, data, file_size, from_gui=from_gui, callback_object=callback_object)
                         file.flush()
                         os.fsync(file.fileno())
                 with open(file_path, "w+b") as file:
@@ -431,13 +457,20 @@ class DataManipulation:
             logging.error(f"Unexpected error occurred: {e}")
         finally:
             lock.release()
+        
+        if from_gui:
+            callback_object.root.stored_data.operation_mode = None
+            if callback_object.root.progress_bar["value"] != 0:
+                callback_object.root.progress_bar.config(maximum=0, value=0)
+                
         try:
             time.sleep(0.5)
             os.remove(file_path)
             if os.path.exists(file_path+".lock"):
                 os.remove(file_path+".lock")
-            sys.stdout.write("\rWallet Annihilation in progress....")
-            print()
+            if not from_gui:
+                sys.stdout.write("\rWallet Annihilation in progress....")
+                print()
         except OSError as e:
             print()
             logging.error(f"Error while removing file: {e}")

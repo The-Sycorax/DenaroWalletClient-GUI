@@ -1048,7 +1048,7 @@ def decryptWalletEntries(filename, password, totp_code=None, address=[], fields=
         else:
             if from_gui:
                 callback_object.root.stored_data.wallet_authenticated = True
-                callback_object.root.title(f"Experimental Denaro Wallet GUI v0.0.1 Pre-alpha ({filename})")
+                callback_object.root.title(f"Denaro Wallet Client v0.0.6-beta GUI ({filename})")
                 if callback_object.get_operation_mode() == "send":
                     DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                     return True
@@ -1064,7 +1064,7 @@ def decryptWalletEntries(filename, password, totp_code=None, address=[], fields=
     
     elif from_gui:
         callback_object.root.stored_data.wallet_authenticated = True
-        callback_object.root.title(f"Experimental Denaro Wallet GUI v0.0.1 Pre-alpha ({filename})")
+        callback_object.root.title(f"Denaro Wallet Client v0.0.6-beta GUI ({filename})")
         if callback_object.get_operation_mode() == "send":
             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             return True

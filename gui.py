@@ -443,7 +443,7 @@ class BlankPage(BasePage):
 class DenaroWalletGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Experimental Denaro Wallet GUI v0.0.1 Pre-alpha")
+        self.title("Denaro Wallet Client v0.0.6-beta GUI")
         self.geometry("1024x576")
         self.minsize(665, 374)
         icon = tk.PhotoImage(file="./denaro/gui_assets/denaro_logo.png")
@@ -1429,7 +1429,7 @@ class GUIUtils:
 
     def close_wallet(self):
         if self.root.stored_data.operation_mode != 'send':
-            self.root.title(f"Experimental Denaro Wallet GUI v0.0.1 Pre-alpha")
+            self.root.title(f"Denaro Wallet Client v0.0.6-beta GUI")
             self.root.account_page.refresh_balance_button.config(state='disabled')
             self.root.wallet_thread_manager.stop_specific_threads(names=['load_wallet', 'load_balance'])
             self.root.wallet_operations.callbacks.clear_wallet_data(preserve_wallet_data=False)

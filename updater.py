@@ -515,7 +515,7 @@ def main():
     Based on the selected command and options, it carries out the necessary actions.
     """
     # Assign GitHub repository owner and name to variables.
-    owner, repo = "The-Sycorax", "DenaroWalletClient"
+    owner, repo = "The-Sycorax", "DenaroWalletClient-GUI"
 
     # Initialize the argument parser for command-line interface with a description.
     parser = argparse.ArgumentParser(description="Update the DenaroWalletClient based on configuration or manually.")

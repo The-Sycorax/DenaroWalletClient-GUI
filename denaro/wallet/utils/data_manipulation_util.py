@@ -114,9 +114,10 @@ class DataManipulation:
                 attempts_msg = f"\nPassword Attempts Left: {attempts_left}"
                 print(attempts_msg)
                 DataManipulation.delete_wallet(filename, data, from_gui=from_gui, callback_object=callback_object)
-                if os.path.normpath(str(filename)) == os.path.normpath(str(callback_object.root.stored_data.wallet_file)):
-                    callback_object.root.stored_data.wallet_deleted = True
-                callback_object.root.gui_utils.update_wallet_menu()
+                if from_gui:
+                    if os.path.normpath(str(filename)) == os.path.normpath(str(callback_object.root.stored_data.wallet_file)):
+                        callback_object.root.stored_data.wallet_deleted = True
+                    callback_object.root.gui_utils.update_wallet_menu()
                 data_erased_msg = "Wallet data has been erased."
                 print(data_erased_msg)
                 time.sleep(0.5)

@@ -1,4 +1,4 @@
-# Denaro Wallet Client
+# Denaro Wallet Client GUI
 
 ## Introduction
 **This repo contains the source code for the Denaro Wallet Client, developed for the Denaro cryptocurrency. It has been designed with a strong emphasis on security, providing users with a secure and efficient way to manage their digital assets.** 
@@ -19,8 +19,8 @@ This encryption method is implemented in stages, beginning with the encryption o
 
 ```bash
 # Clone the repository
-git clone https://github.com/The-Sycorax/DenaroWalletClient.git
-cd DenaroWalletClient
+git clone https://github.com/The-Sycorax/DenaroWalletClient-GUI.git
+cd DenaroWalletClient-GUI
 
 # Update package list and install required library
 sudo apt update
@@ -39,7 +39,11 @@ source env/bin/activate
 # Install the required packages
 pip3 install -r requirements.txt
 
-# Run the wallet client
+
+# Run the wallet client GUI
+python3 gui.py
+
+# Optionally run the wallet client CLI
 python3 wallet_client.py <options>
 ```
 

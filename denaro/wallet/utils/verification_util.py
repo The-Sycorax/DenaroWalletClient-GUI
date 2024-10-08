@@ -14,13 +14,6 @@ from Crypto.Protocol.KDF import scrypt
 import data_manipulation_util
 import cryptographic_util
 
-
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
-from argon2.low_level import hash_secret, Type
-
-ph = PasswordHasher()
-
 class Verification:
     """
     Handles data verification.
@@ -37,26 +30,12 @@ class Verification:
             salt_bytes = bytes(salt, 'utf-8')
         pbkdf2_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt_bytes, 100000)
         
-        #Verification.hash_password_argon2(password, salt)
 
         # Second layer of hashing using Scrypt
         result = scrypt(pbkdf2_hash, salt=salt, key_len=32, N=2**14, r=8, p=1)
         data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
         return result
-    
-    @staticmethod
-    def hash_password_argon2(password, salt):
-        
-        hashed_password = hash_secret(
-            password.encode('utf-8'), 
-            salt, 
-            time_cost=8, 
-            memory_cost=102400, 
-            parallelism=2, 
-            hash_len=32, 
-            type=Type.ID
-        )
-        print(hashed_password)
+
 
     @staticmethod
     def verify_password(stored_password_hash, provided_password, salt):

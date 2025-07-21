@@ -9,3 +9,4 @@ github_data.json
 update_config.json
 experimental_ui.py
 old
+*.cfg

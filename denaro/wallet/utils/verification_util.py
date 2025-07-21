@@ -132,66 +132,127 @@ class Verification:
     
     @staticmethod
     def is_valid_address(address):
-        ipv4_with_optional_port = r'^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?::([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$'
-        url_with_tld_optional_port = r'^(?!(http:\/\/|https:\/\/))[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?::([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$'
-        localhost_with_optional_port = r'^localhost(:([1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))?$'
-        
+        """
+        Validates if the provided address is a valid IPv4 address, URL without protocols, or localhost with optional port.
+        """
+        # Patterns for matching IPv4 addresses, URLs, and localhost with optional ports
+        patterns = {
+            'ipv4': r'^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?::([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$',
+            'url': r'^(?!(http:\/\/|https:\/\/))[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?::([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$',
+            'localhost': r'^localhost(:([1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))?$'
+        }
+
+        # Remove protocol from address
         stripped_address = re.sub(r'^https?://', '', address)
-        domain_pattern = url_with_tld_optional_port
-        if re.match(domain_pattern, stripped_address, re.IGNORECASE):
-            return True
-        if re.match(ipv4_with_optional_port, stripped_address):
-            return True
-        if re.match(localhost_with_optional_port,stripped_address):
-            return True
+
+        # Check against each pattern
+        for pattern in patterns.values():
+            if re.match(pattern, stripped_address, re.IGNORECASE):
+                return True
+
+        # If no pattern matched, log and securely delete variables before returning False
         data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return False
-    
+
     @staticmethod
     def is_valid_port(port):
+        """
+        Validates if the provided port number is within the valid range (1-65535).
+        """
         try:
             port_num = int(port)
-            return 1 <= port_num <= 65535
-        except ValueError:
-            data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
+            if 1 <= port_num <= 65535:
+                return True
+            else:
+                return False
+                #raise ValueError("Port number out of valid range.")
+        except ValueError as e:
+            #logging.error(f"Invalid port: {e}")
             return False
-    
+
     @staticmethod
-    def validate_node_address(node):
-        node = node.rstrip('//')
-        chosen_protocol = 2
-        if node.startswith("https://"):
-            chosen_protocol = 0            
-        elif node.startswith("http://"):
-            chosen_protocol = 1
-                    
-        if not Verification.is_valid_address(node):
-            logging.error("Invalid node address. Please provide a valid IP Address or URL.")
-            data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-            return False, None
-            
-        node = re.sub(r'\s+', ' ', node)
-        node = node.replace(" :", ":").replace(": ", ":")
+    def validate_node_address(node, from_gui=False, check_connection=False, **kwargs):
+        """
+        Validates the node address and port, and attempts a connection based on the protocol and validation flag.
+        """
+      #  print(f"\nRunning validate_node_address | Called from: {kwargs.get('referer')}")
+        node_validation = True if node[1] == True or node[1] == None else False
+
+        if isinstance(node[1], str):
+            node_validation = True if node[1] == "True" or node[1] == None else False
+
+        node_address = node[0].rstrip('//').strip()
+
+        # Determine protocol
+        chosen_protocol = 0 if node_address.startswith("https://") else 1 if node_address.startswith("http://") else 2
         
-        #This may be redundant, but for good measure we'll perform additional port number validations
-        port_match = re.search(r':([0-9]{1,5})', node)
-        if port_match: 
-            if not Verification.is_valid_port(port_match.group(1)):
-                logging.error("Invalid port number. Please enter a value between 1 and 65535.")
-                data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-                return False, None
+        # Clean up node address
+        cleaned_node_address = re.sub(r'\s+', ' ', node_address).replace(" :", ":").replace(": ", ":")
+        
+        try:
+            if not str(cleaned_node_address.split(":",1)[1].split(":",1)[1]).isdigit():
+                return_msg = "Invalid port number. Please enter a value between 1 and 65535."
+                if not from_gui:
+                    logging.error(return_msg)
+                result = False, None, False, "ERROR: "+return_msg
+                data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+                return result
+        except Exception:
+            pass
+
+        port_number_present = re.compile(r'^(?:http[s]?://)?(?:[\w\-\.]+)(?::(\d+))').search(cleaned_node_address)
+        if port_number_present and port_number_present.group(1):
+            port_invalid = False
+            # Validate port, if present
+            port_match = re.search(r':(0|([1-9][0-9]{0,3})|([1-5][0-9]{4})|(6[0-4][0-9]{3})|(65[0-4][0-9]{2})|(655[0-2][0-9])|(6553[0-5]))$', cleaned_node_address)
+            if port_match:
+                if not Verification.is_valid_port(port_match.group(0).replace(":","")):
+                    port_invalid = True
+            else:
+                port_invalid = True        
+            if port_invalid:
+                return_msg = "Invalid port number. Please enter a value between 1 and 65535."
+                if not from_gui:
+                    logging.error(return_msg)
+                result = False, None, False, "ERROR: "+return_msg
+                data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+                return result
+
+        # Validate address
+        if not Verification.is_valid_address(node_address):
+            return_msg = "Invalid node address. Please provide a valid IP Address or URL."
+            if not from_gui:
+                logging.error(return_msg)
+            result = False, None, False, return_msg
+            data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+            return result
+
+        # Attempt connection
+        
+        if check_connection:
+            success, node, return_msg = Verification.try_request(cleaned_node_address, chosen_protocol, node_validation, from_gui)
+        
+            if success:
+                return_msg = f"Successfully established connection with valid node at: {node}" if not from_gui else "Successfully established connection with node."
+                if not from_gui:
+                    print(return_msg)
+                result = True, node, True, return_msg
+                data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+                return result
+        else:
+            result = True, node[0], True, ""
             
-        stripped_address = re.sub(r'^https?://', '', node)
-        success, node = Verification.try_request(stripped_address, chosen_protocol)
-        if success:
-            print(f"Successfully established connection with valid Denaro node at: {node}\n")
-            return True, node
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return False, None
+            data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+            return result
+        
+        # If connection attempt fails, securely delete variables and return failure
+        result = False, None, True, return_msg
+        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
     
     @staticmethod
-    def try_request(address, chosen_protocol):
-        main_node_url = "https://denaro-node.gaetano.eu.org"
+    def try_request(address, chosen_protocol, node_validation, from_gui=False):
+        main_node_url = "denaro-node.gaetano.eu.org"
         protocols = ["https://", "http://"]
 
         # Configure logging for detailed error information
@@ -202,57 +263,88 @@ class Verification:
             protocols_to_try = [""]
         else:
             protocols_to_try = protocols if chosen_protocol == 2 else [protocols[chosen_protocol], protocols[1 - chosen_protocol]]
-
+         
         for index, protocol in enumerate(protocols_to_try):
             full_address = protocol + address
-
+            if full_address.replace("https://", "").replace("http://", "") == main_node_url:
+                node_validation = False
             try:
-                # Get the last block number from the main node
-                main_response = requests.get(f"{main_node_url}/get_mining_info", timeout=5, verify=False)
-                main_response.raise_for_status()
-                last_block_info = main_response.json().get('result', {}).get('last_block', {})
-                last_block_number = last_block_info.get('id')
-                if last_block_number is None:
-                    logging.warning("Last block number not found in main node response.")
-                    continue
-
-                # Generate a random block number
-                random_block_id = random.randint(0, last_block_number - 1)
-
-                # Get the block hash from the main node
-                main_block_response = requests.get(f"{main_node_url}/get_block?block={random_block_id}", timeout=5, verify=False)
-                main_block_response.raise_for_status()
-                main_node_block_info = main_block_response.json().get('result', {}).get('block', {})
-                main_node_block_hash = main_node_block_info.get('hash')
-                if main_node_block_hash is None:
-                    logging.warning("Block hash not found in main node response.")
-                    continue
-
-                # Get the block hash from the user-specified node
-                user_block_response = requests.get(f"{full_address}/get_block?block={random_block_id}", timeout=5, verify=False)
-                user_block_response.raise_for_status()
-                user_node_block_info = user_block_response.json().get('result', {}).get('block', {})
-                user_node_block_hash = user_node_block_info.get('hash')
-
-                if user_node_block_hash is None:
-                    logging.warning("Block hash not found in user-specified node response.")
-                    continue
-
-                # Compare the block hashes
-                if main_node_block_hash == user_node_block_hash:
-                    data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-                    return True, full_address
+                if node_validation:
+                    # Get the last block number from the main node
+                    main_response = requests.get(f"https://{main_node_url}/get_mining_info", verify=False, timeout=5)
+                    main_response.raise_for_status()
+                    last_block_info = main_response.json().get('result', {}).get('last_block', {})
+                    last_block_number = last_block_info.get('id')
+                    if last_block_number is None:
+                        return_msg = f"Node validation failed."# Last block number not found in main node response."
+                        if not from_gui:
+                            logging.warning(return_msg)
+                        return_msg = "ERROR: "+return_msg
+                        continue
+    
+                    # Generate a random block number
+                    random_block_id = random.randint(0, last_block_number - 1)
+    
+                    # Get the block hash from the main node
+                    main_block_response = requests.get(f"https://{main_node_url}/get_block?block={random_block_id}", verify=False, timeout=5)
+                    main_block_response.raise_for_status()
+                    main_node_block_info = main_block_response.json().get('result', {}).get('block', {})
+                    main_node_block_hash = main_node_block_info.get('hash')
+                    if main_node_block_hash is None:
+                        return_msg = f"Node validation failed."# Block hash not found in main node response."
+                        if not from_gui:
+                            logging.error(return_msg)
+                        return_msg = "ERROR: "+return_msg
+                        continue
+    
+                    # Get the block hash from the user-specified node
+                    user_block_response = requests.get(f"{full_address}/get_block?block={random_block_id}", verify=False, timeout=5)
+                    user_block_response.raise_for_status()
+                    user_node_block_info = user_block_response.json().get('result', {}).get('block', {})
+                    user_node_block_hash = user_node_block_info.get('hash')
+    
+                    if user_node_block_hash is None:
+                        return_msg = f"Node validation failed."# Block hash not found in specified node. {full_address} is not a valid Denaro node."
+                        if not from_gui:
+                            logging.error(return_msg)
+                        return_msg = "ERROR: "+return_msg
+                        continue
+    
+                    # Compare the block hashes
+                    if main_node_block_hash == user_node_block_hash:
+                        result = True, full_address, ""
+                        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+                        return result
+                    else:
+                        return_msg = f"Node at {full_address} has invalid blockchain data."
+                        if not from_gui:
+                            logging.error(return_msg)
+                        return_msg = "ERROR: "+return_msg
+                        continue
                 else:
-                    logging.info(f"Node at {full_address} has invalid blockchain data.")
-                    continue
-
+                    main_response = requests.get(f"{full_address}/get_mining_info", verify=False, timeout=5)
+                    main_response.raise_for_status()
+                    if not main_response.json().get('ok'):
+                        continue
+                    else:
+                        result = True, full_address, ""
+                        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+                        return result
+                    
             except requests.RequestException:
                 if index < len(protocols_to_try) - 1:
-                    logging.warning(f"Connection failed with {full_address}. Trying next protocol...")
+                    #return_msg = f"Connection failed with {full_address}. Trying next protocol..."
+                    return_msg = "Connection to node failed. Trying next protocol..."
+                    if not from_gui:
+                        logging.error(return_msg)
                 else:
-                    logging.warning(f"Connection failed with {full_address}.\nUsing default Denaro node at: {main_node_url}\n")
+                    return_msg = "Connection to node failed."
+                    if not from_gui:
+                        logging.error(return_msg)
+                    return_msg = "ERROR: "+return_msg
                 continue
 
         # Secure delete before final return
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, False
+        result = None, False, return_msg
+        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result

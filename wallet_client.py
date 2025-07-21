@@ -58,8 +58,8 @@ handler.setFormatter(formatter)
 root_logger.handlers = []
 root_logger.addHandler(handler)
 
-
-transaction_message_extension = "Sent From Denaro Wallet Client v0.0.6-beta"
+wallet_client_version = "Denaro Wallet Client v0.0.7-beta"
+transaction_message_extension = f"Sent From {wallet_client_version}"
 
 
 # Filesystem Functions
@@ -338,7 +338,7 @@ def handle_existing_encrypted_wallet(filename, data, password, totp_code, determ
     if not password:
         if from_gui:
             while not password:
-                password = callback_object.post_ask_string("Authentication Required", "The wallet file is encrypted and authentication is required to proceed.\nPlease enter the password for the wallet.", show='*')
+                password = callback_object.post_password_dialog("Authentication Required", "The wallet file is encrypted and authentication is required to proceed.\nPlease enter the password for the wallet.", show='*')
                 if password is None:
                     # If the user cancels the prompt, securely delete variables and return None
                     DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -622,9 +622,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
         wallet_version = "0.2.3"
         if from_gui:
             callback_object.root.stored_data.operation_mode = 'create_wallet'
-            #callback_object.post_wait_dialog(title="Info", msg="Creating new wallet please wait.")
-            #time.sleep(3)
-
+            
         logging.info("new_wallet is set to True.")
         encrypt = stored_encrypt_param    
         deterministic = stored_deterministic_param
@@ -668,7 +666,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
             if not password and not new_wallet and not wallet_version == "0.2.3":
                 if from_gui:
                     while not password:
-                        password = callback_object.post_ask_string("Password Required", "The wallet type is deterministic and a password is required to derive addresses.\nPlease enter the password for the wallet:", show='*')
+                        password = callback_object.post_password_dialog("Password Required", "The wallet type is deterministic and a password is required to derive addresses.\nPlease enter the password for the wallet:", show='*')
                         if password is None:
                             # If the user cancels the prompt, securely delete variables and return None
                             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -1048,7 +1046,7 @@ def decryptWalletEntries(filename, password, totp_code=None, address=[], fields=
         else:
             if from_gui:
                 callback_object.root.stored_data.wallet_authenticated = True
-                callback_object.root.title(f"Denaro Wallet Client v0.0.6-beta GUI ({filename})")
+                callback_object.root.title(f"{wallet_client_version} GUI ({filename})")
                 if callback_object.get_operation_mode() == "send":
                     DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                     return True
@@ -1064,7 +1062,7 @@ def decryptWalletEntries(filename, password, totp_code=None, address=[], fields=
     
     elif from_gui:
         callback_object.root.stored_data.wallet_authenticated = True
-        callback_object.root.title(f"Denaro Wallet Client v0.0.6-beta GUI ({filename})")
+        callback_object.root.title(f"{wallet_client_version} GUI ({filename})")
         if callback_object.get_operation_mode() == "send":
             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             return True
@@ -1465,6 +1463,51 @@ def generatePaperWallet(filename, password, totp_code, address, private_key, fil
         logging.error(f"Error in generating paper wallet: {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
 
+#Configuration Functions
+def read_config(config_path='settings.cfg', disable_err_msg = False):
+    """
+    Reads the configuration from a JSON file.
+
+    Parameters:
+    - config_path (str): The path to the configuration file. Defaults to 'update_config.json'.
+
+    Returns:
+    - dict: The configuration as a dictionary, or None if the file is not found or contains invalid JSON.
+    """
+    if not os.path.exists(config_path):
+        config = {"default_node": "https://denaro-node.gaetano.eu.org", "node_validation": "True", "default_currency": "USD"}
+        write_config(config=config)
+
+    try:
+        with open(config_path, 'r') as config_file:
+            return json.load(config_file)  # Loads and returns the configuration as a dictionary
+    except FileNotFoundError:
+        if not disable_err_msg:
+            logging.error(" Config file not found. Please initialize the configuration using 'set-config'.")
+        return None  # Returns None if the configuration file is not found
+    except json.JSONDecodeError:
+        logging.error(" Config file contains invalid JSON data.")
+        return None  # Returns None if the JSON is invalid
+    
+def write_config(config_path='settings.cfg', config=None):
+    """
+    Writes the given configuration to a JSON file.
+
+    Parameters:
+    - config (dict): The configuration to write.
+    - config_path (str): The path to the configuration file. Defaults to 'update_config.json'.
+
+    Returns:
+    - bool: True if the configuration was written successfully, False otherwise.
+    """
+    try:
+        with open(config_path, 'w') as config_file:
+            json.dump(config, config_file, indent=4)  # Writes the configuration to the file with indentation
+        return True  # Returns True if the operation was successful
+    except Exception as e:
+        logging.error(f"Failed to write config: {e}")
+        return False  # Returns False if any exception occurred during file writing
+    
 #Transaction Functions
 def validate_and_select_node(node):
     """
@@ -1483,7 +1526,7 @@ def validate_and_select_node(node):
         node address if no address is provided. It returns None if the provided address is invalid.
     """
     if node:
-        is_node_valid, node = Verification.validate_node_address(node)
+        is_node_valid, node, _, _ = Verification.validate_node_address(node, referer="validate_and_select_node")
         if not is_node_valid:
             node = 'https://denaro-node.gaetano.eu.org'
     else:
@@ -1572,7 +1615,8 @@ def get_address_and_private_key(filename, password, totp_code, address, private_
 def checkBalance(filename, password, totp_code=None, address = [], node = None, to_json = False, to_file = False, show=None, currency_code=None, currency_symbol=None, address_data=None, from_gui=False, callback_object=None, stop_signal=None):
      
     # Select a valid node
-    node = validate_and_select_node(node)
+    if not from_gui:
+        node = validate_and_select_node(node)
     if node is None:
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None
@@ -1784,12 +1828,16 @@ def checkBalance(filename, password, totp_code=None, address = [], node = None, 
 def prepareTransaction(filename, password, totp_code, amount, sender, private_key, receiver, message, node, from_gui=None):
     global transaction_message_extension
     max_message_length = 256 - len(transaction_message_extension) + 3
+   
     if len(message) > max_message_length:
         logging.error(f"Message length exceeded, must be between 0-{max_message_length} characters.")
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None
+        result = None, f"\n[{datetime.now()}]\nError: Message length exceeded, must be between 0-{max_message_length} characters."
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
     
-    node = validate_and_select_node(node)
+    if not from_gui:
+        node = validate_and_select_node(node)
+   
     if node is None:
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None, None
@@ -1818,16 +1866,16 @@ def prepareTransaction(filename, password, totp_code, amount, sender, private_ke
     if not re.match(address_pattern, receiver):
         logging.error("The recieving address is not valid.")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, "The recieving address is not valid."
+        return None, "Error: The recieving address is not valid."
 
     # Create the transaction
-    result = create_transaction([private_key], sender, receiver, amount, message, node=node)
+    result, msg_str = create_transaction([private_key], sender, receiver, amount, message, node=node)
     DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
-    return result
+    return result, msg_str
     
 def create_transaction(private_key, sender, receiving_address, amount, message: bytes = None, send_back_address=None, node=None):
     
-    print(f"Attempting to send {amount} DNR from {sender} to {receiving_address}.")
+    print(f"\n[{datetime.now()}]\nAttempting to send {amount} DNR from {sender} to {receiving_address}.")
     msg_str = ''
     msg_str += f'[{datetime.now()}]\nAttempting to send {amount} DNR from {sender} to {receiving_address}.\n\n'
 
@@ -1837,11 +1885,14 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
     for key in private_key:
         if send_back_address is None:
             send_back_address = sender
-        balance, address_inputs, is_pending, pending_transactions, pending_transaction_hashes, is_error = get_address_info(sender, node)
+        balance, address_inputs, is_pending, pending_transactions, pending_transaction_hashes, is_error, msg = get_address_info(sender, node)
+        msg_str = msg_str + msg
 
         if is_error:
-            DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-            return None, msg_str
+            result = None, msg_str
+            DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+            return result
+        
         for address_input in address_inputs:
             address_input.private_key = key
         inputs.extend(address_inputs)
@@ -1850,10 +1901,10 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
     
     if not inputs:
         if is_pending:
-            logging.error("No spendable outputs. Please wait for pending transactions to be confirmed.")
+            print(f"\n[{datetime.now()}]\nERROR: No spendable outputs. Please wait for pending transactions to be confirmed.")
             msg_str += f'[{datetime.now()}]\nERROR: No spendable outputs. Please wait for pending transactions to be confirmed.\n'
             if pending_transactions is not None:
-                print("\nTransactions awaiting confirmation:")
+                print(f"\nTransactions awaiting confirmation:")
                 msg_str += f'Transactions awaiting confirmation:\n'
                 count = 0
                 for tx in pending_transaction_hashes:
@@ -1861,20 +1912,22 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
                     print(f"{count}: {tx}")
                     msg_str += f"{count}: {tx}\n"
         else:
-            logging.error('No spendable outputs.')
+            print(f'\n[{datetime.now()}]\nERROR: No spendable outputs.')
             msg_str += f'[{datetime.now()}]\nERROR: No spendable outputs.\n'
             if not balance > 0:
-                print("The associated address dose not have enough funds.\n")
+                print(f"The associated address dose not have enough funds.\n")
                 msg_str += f'The associated address dose not have enough funds.\n'
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, msg_str
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
     
     # Check if accumulated inputs are sufficient
     if sum(input.amount for input in inputs) < amount:
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        print("The associated address dose not have enough funds.\n")
+        print(f"\n[{datetime.now()}]\nERROR: The associated address dose not have enough funds.\n")
         msg_str += f'[{datetime.now()}]\nERROR: The associated address dose not have enough funds.\n'
-        return None, msg_str
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
 
     # Select appropriate transaction inputs
     transaction_inputs = []
@@ -1886,10 +1939,11 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
     # Ensure that the transaction amount is adequate
     transaction_amount = sum(input.amount for input in transaction_inputs)
     if transaction_amount < amount:
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not transaction_amount])
-        logging.error(f"Consolidate outputs: send {transaction_amount} Denari to yourself\n")
-        msg_str += f'[{datetime.now()}]\nERROR: Consolidate outputs: send {transaction_amount} Denari to yourself\n'
-        return None, msg_str
+        print(f"\n[{datetime.now()}]\nERROR:\nConsolidate outputs: send {transaction_amount} Denari to yourself\n")
+        msg_str += f'[{datetime.now()}]\nERROR:\nConsolidate outputs: send {transaction_amount} Denari to yourself\n'
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
     
     # Create the transaction
     transaction = Transaction(transaction_inputs, [TransactionOutput(receiving_address, amount=amount)], message)
@@ -1908,29 +1962,36 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
         if not response.get('ok'):
             print(response.get('error'))
             msg_str += f'[{datetime.now()}]\n{response.get("error")}\n'
-            DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-            return None, msg_str
+            result = None, msg_str
+            DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+            return result
         result = transaction, msg_str
         DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
         return result
     
     except requests.RequestException as e:
         # Handles exceptions that occur during the request
-        print(f"Error during request to node: {e}")
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, msg_str
+        print(f"\n[{datetime.now()}]\nError during request to node:\n {e}")
+        msg_str += f'[{datetime.now()}]\nError during request to node. See console output for more details.\n'
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
 
     except ValueError as e:
         # Handles JSON decoding errors
-        print(f"Error decoding JSON response from node: {e}")
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, msg_str
+        print(f"\n[{datetime.now()}]\nError decoding JSON response from node:\n {e}")
+        msg_str += f'[{datetime.now()}]\nError decoding JSON response from node. See console output for more details.\n'
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
 
     except KeyError as e:
         # Handles missing keys in response data
-        print(f"Missing expected data in response from node: {e}")
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, msg_str
+        print(f"\n[{datetime.now()}]\nMissing expected data in response from node:\n {e}")
+        msg_str += f'[{datetime.now()}]\nMissing expected data in response from node. See console output for more details.\n'
+        result = None, msg_str
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+        return result
 
 def get_address_info(address: str, node: str):
     try:
@@ -1941,9 +2002,11 @@ def get_address_info(address: str, node: str):
         response = request.json()
 
         if not response.get('ok'):
-            logging.error(response.get('error'))
-            DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-            return None, None, None, None, True
+            print(f"\n[{datetime.now()}]\n{response.get('error')}")
+            msg_str = f"\n[{datetime.now()}]\n{response.get('error')}\n"
+            result = None, None, None, None, None, True, msg_str
+            DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
+            return result
 
         result = response['result']
         is_pending = False
@@ -1968,27 +2031,30 @@ def get_address_info(address: str, node: str):
             for value in result['pending_transactions']:
                 pending_transaction_hashes.append((value['hash']))
         
-        final_result = Decimal(result['balance']), tx_inputs, is_pending, pending_spent_outputs, pending_transaction_hashes, False
+        final_result = Decimal(result['balance']), tx_inputs, is_pending, pending_spent_outputs, pending_transaction_hashes, False, ""
         DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not final_result])
         return final_result
 
     except requests.RequestException as e:
         # Handles exceptions that occur during the request
-        print(f"Error during request to node: {e}")
+        print(f"\n[{datetime.now()}]\nError during request to node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, None, None, None, True
+        msg_str = f'[{datetime.now()}]\nError during request to node. See console output for more details.\n'
+        return None, None, None, None, None, True, msg_str
 
     except ValueError as e:
         # Handles JSON decoding errors
-        print(f"Error decoding JSON response from node: {e}")
+        print(f"\n[{datetime.now()}]\nError decoding JSON response from node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, None, None, None, True
+        msg_str = f'[{datetime.now()}]\nError decoding JSON response from node. See console output for more details.\n'
+        return None, None, None, None, None, True, msg_str
 
     except KeyError as e:
         # Handles missing keys in response data
-        print(f"Missing expected data in response from node: {e}")
+        print(f"\n[{datetime.now()}]\nMissing expected data in response from node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        return None, None, None, None, True
+        msg_str = f'[{datetime.now()}]\nMissing expected data in response from node. See console output for more details.\n'
+        return None, None, None, None, None, True, msg_str
 
 def get_balance_info(address: str, node: str, from_gui= False, callback_object=None, stop_signal=None):
     """
@@ -2011,13 +2077,13 @@ def get_balance_info(address: str, node: str, from_gui= False, callback_object=N
         result = response.get('result')
 
         if not response.get('ok'):
-            logging.error(response.get('error'))
+            print(f"\n[{datetime.now()}]\n{response.get('error')}")
             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             return None, None, True
     
         # Handle potential missing 'result' key
         if result is None:
-            logging.error("Missing 'result' key in response")
+            print(f"\n[{datetime.now()}]\nERROR: Missing 'result' key in response")
             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             return None, None, True
 
@@ -2054,19 +2120,19 @@ def get_balance_info(address: str, node: str, from_gui= False, callback_object=N
     
     except requests.RequestException as e:
         # Handles exceptions that occur during the request
-        print(f"Error during request to node: {e}")
+        print(f"\n[{datetime.now()}]\nError during request to node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None, None, True
 
     except ValueError as e:
         # Handles JSON decoding errors
-        print(f"Error decoding JSON response from node: {e}")
+        print(f"\n[{datetime.now()}]\nError decoding JSON response from node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None, None, True
 
     except KeyError as e:
         # Handles missing keys in response data
-        print(f"Missing expected data in response from node: {e}")
+        print(f"\n[{datetime.now()}]\nMissing expected data in response from node:\n {e}")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None, None, True
     #finally:

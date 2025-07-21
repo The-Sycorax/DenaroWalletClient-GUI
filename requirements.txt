@@ -10,3 +10,6 @@ qrcode==7.4.2
 Pillow==10.3.0
 filelock==3.13.1
 reportlab==4.0.8
+ttkbootstrap==1.10.1
+tkinter-tooltip==3.1.0
+continuous-threading==2.0.6

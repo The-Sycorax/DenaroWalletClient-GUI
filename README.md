@@ -321,7 +321,7 @@ deactivate
         ---
 
         #### `backupwallet`
-        **Overview**: The `backup` sub-command is used to create a backup of a wallet file. An option to choose the backup directory is availible.
+        **Overview**: The `backup` sub-command is used to create a backup of a wallet file. An option to choose the backup directory is available.
 
         <details>
         <summary>Usage:</summary> 

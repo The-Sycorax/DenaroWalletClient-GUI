@@ -4,6 +4,8 @@ import re
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, simpledialog, messagebox, Menu, font
+from tktooltip import ToolTip
+
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from PIL import ImageTk, Image
@@ -35,6 +37,7 @@ from denaro.wallet.utils.wallet_generation_util import sha256
 from denaro.wallet.utils.tkinter_utils.custom_auto_complete_combobox import AutocompleteCombobox
 from denaro.wallet.utils.tkinter_utils.custom_dialog import CustomDialog
 from denaro.wallet.utils.tkinter_utils.dialogs import Dialogs
+from denaro.wallet.utils.tkinter_utils.custom_popup import CustomPopup
 
 class BasePage(ttk.Frame):
     def __init__(self, parent, root, *args, **kwargs):
@@ -126,7 +129,7 @@ class AccountPage(BasePage):
         self.column_min_widths = {}
         for col in self.columns:
             self.accounts_tree.heading(col, text=col)
-            title_width = self.treeview_font.measure(col) + 20  # Extra space for padding
+            title_width = self.treeview_font.measure(col) + 40  # Extra space for padding
             self.column_min_widths[col] = title_width
             self.accounts_tree.column(col, minwidth=self.column_min_widths[col], stretch=tk.YES)    
 
@@ -135,7 +138,7 @@ class AccountPage(BasePage):
         self.accounts_tree.tag_configure('evenrow', background='#cee0e7')  # A slightly different shade for even row 
         
         for col in ["Balance", "Pending", "Value"]:
-            self.accounts_tree.heading(col, text=col, command=lambda _col=col: self.root.gui_utils.sort_treeview_column(self.accounts_tree, _col))
+            self.accounts_tree.heading(col, text=col+" ⥮", command=lambda _col=col: self.root.gui_utils.sort_treeview_column(self.accounts_tree, _col))
      
         # Refresh balance button
         self.refresh_balance_button = tb.Button(self.balance_frame, text="Refresh Balance", state='disabled')
@@ -355,9 +358,14 @@ class SettingsPage(BasePage):
         super().__init__(parent, root)
         self.prev_currency_code = None
         self.currency_code_valid = False
+        self.currency_code = ""
+        self.currency_symbol = ""
+
+        self.keep_save_button_disabled = False
 
         self.create_widgets()  # Create and place widgets
         self.configure_layout() # Configure the grid layout of the AccountPage
+        self.update_save_button_state()
 
         # Dynamically identify selectable widgets
         self.root.selectable_widgets.extend(self.root.gui_utils.identify_selectable_widgets(self))
@@ -370,35 +378,99 @@ class SettingsPage(BasePage):
         self.currency_code_combobox.pack(side='left', padx=5, pady=5)
         self.valid_currency_code.pack(side='left', padx=5, pady=5)
 
+        # Position the Denaro Node widgets within the denaro_node_frame
+        self.denaro_node_frame.grid(row=1, column=0, sticky='w', padx=15, pady=10, ipady=5)        
+        # Address label and entry
+        self.denaro_node_address_label.grid(row=1, column=0, sticky='w', padx=5, pady=(10, 0))
+        self.denaro_node_address_frame.grid(row=2, column=0, sticky='ew', padx=5)
+        self.denaro_node_address_entry.pack(side='left', fill='x', expand=True)        
+        # Colon (:) label
+        self.denaro_node_colon.grid(row=2, column=1, sticky='ew')  # Ensure it sticks to east-west to center the colon        
+        # Port label and entry
+        self.denaro_node_port_label.grid(row=1, column=2, sticky='w', padx=5, pady=(10, 0))
+        self.denaro_node_port_frame.grid(row=2, column=2, sticky='ew', padx=5)
+        self.denaro_node_port_entry.pack(side='left', fill='x', expand=True)        
+        # Node validation checkbox
+        self.disable_node_validation_checkbox.grid(row=3, column=0, sticky='w', padx=5, pady=10)
+        self.test_connection_button.grid(row=3, column=2, sticky='e', padx=5, pady=10)
+        
+        # Ensure the denaro_node_frame columns do not affect the overall layout
+        self.denaro_node_frame.columnconfigure(0, weight=1)
+        self.denaro_node_frame.columnconfigure(1, weight=0)  # Minimal weight to colon column
+        self.denaro_node_frame.columnconfigure(2, weight=1)
+
+        # Save config button
+        self.save_config_frame.grid(row=4, column=0, sticky='we', padx=10)
+        self.node_validation_msg_label.pack(padx=5, anchor='w')
+        self.save_config_button.pack(pady=10, side='right')
+
 
     def create_widgets(self):
         # Settings Page Layout
         #######################################################################################        
         #Currency code
-        wallet_client.is_valid_currency_code()
-        self.currency_codes = list(wallet_client.is_valid_currency_code.valid_codes.keys())        
         self.currency_code_inner_frame = tb.Frame(self)
-        self.currency_code_label = tb.Label(self.currency_code_inner_frame, text="Default Currency:")        
-        # Combobox
+        self.currency_code_label = tb.Label(self.currency_code_inner_frame, text="Default Currency:")  
+        self.valid_currency_code = tb.Label(self.currency_code_inner_frame)
+
+        #Initialize currency code function
+        wallet_client.is_valid_currency_code()
+        
+        #Get list of valid codes
+        self.currency_codes = list(wallet_client.is_valid_currency_code.valid_codes.keys())
+ 
+        # Create custom Combobox
         self.currency_code_combobox = AutocompleteCombobox(self.currency_code_inner_frame, width=20, completevalues=self.currency_codes, state='normal')        
-        self.separators = ["--- Fiat Currencies ---", "--- Crypto Currencies ---"]        
+        
         # Add separators at specific indices
+        self.separators = ["--- Fiat Currencies ---", "--- Crypto Currencies ---"]        
         self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[0], 0)  # Adds the first separator
         self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[1], 162)  # Adds the second separator        
         self.currency_code_combobox.current(147)
         self.last_valid_selection = self.currency_code_combobox.current()        
-        self.currency_code_combobox.bind('<<ComboboxSelected>>', self.root.gui_utils.on_currency_code_combobox_select)        
-        self.valid_currency_code = tb.Label(self.currency_code_inner_frame)        
-        self.currency_code = self.currency_code_combobox.get()
-        self.root.stored_data.currency_code = self.currency_code_combobox.get()
-        self.currency_symbol = '$'
-        self.root.stored_data.currency_symbol = self.currency_symbol
-        self.validate_currency_code_interval()
+        self.currency_code_combobox.bind('<<ComboboxSelected>>', self.root.gui_utils.on_currency_code_combobox_select)
+        
+        # Validate currency code on init
+        self.after(100, self.validate_currency_code)
+        #Validate currency code on each write
+        self.currency_code_combobox.var.trace_add("write", self.validate_currency_code)
+
+        self.denaro_node_frame = tb.LabelFrame(self, text="Denaro Node Config:",width=20)
+        self.denaro_node_address_label = tb.Label(self.denaro_node_frame, text="Address")        
+        self.denaro_node_address_frame = tb.Frame(self.denaro_node_frame)
+        self.denaro_node_address_entry = tb.Entry(self.denaro_node_address_frame, validate="focusout", width=30)#, state='disabled')
+        self.denaro_node_address_entry_text = tb.StringVar()        
+        self.denaro_node_address_entry_text.trace_add("write", self.on_node_field_change)
+        self.denaro_node_address_entry["textvariable"] = self.denaro_node_address_entry_text
+
+        self.denaro_node_colon = tb.Label(self.denaro_node_frame, text=":")        
+        
+        self.denaro_node_port_label = tb.Label(self.denaro_node_frame, text="Port")
+        self.denaro_node_port_frame = tb.Frame(self.denaro_node_frame)  
+        self.denaro_node_port_entry = tb.Entry(self.denaro_node_port_frame, validate="focusout", width=30)
+        self.denaro_node_port_entry_text = tb.StringVar()
+        self.denaro_node_port_entry_text.trace_add("write", self.on_node_field_change)
+        self.denaro_node_port_entry["textvariable"] = self.denaro_node_port_entry_text
+        
+        
+        self.disable_node_validation_checkbox = tk.Checkbutton(self.denaro_node_frame, text='Disable Node Validation')
+        self.disable_node_validation_var = tk.BooleanVar()
+        self.disable_node_validation_var.trace_add("write", self.on_node_field_change)
+        self.disable_node_validation_checkbox["variable"] = self.disable_node_validation_var
+
+        self.test_connection_button = tb.Button(self.denaro_node_frame, text="Test Connection")
+        self.test_connection_button.config(command=lambda: self.test_node_connection())
+        
+        # Save config button
+        self.save_config_frame = tb.Frame(self)
+        self.node_validation_msg_label = tb.Label(self.save_config_frame, text="")
+        self.save_config_button = tb.Button(self.save_config_frame, text="Save Settings", state='disabled')
+        self.save_config_button.config(command=lambda: self.root.config_handler.save_config())
         #######################################################################################
         # End of Settings Page Layout
 
 
-    def validate_currency_code(self):
+    def validate_currency_code(self, *args):
         self.current_selection = self.currency_code_combobox.get()
         # Check if the combo box selection has changed since the last check
         if self.current_selection != self.prev_currency_code:
@@ -426,26 +498,111 @@ class SettingsPage(BasePage):
             self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[0], 0)
         if not self.currency_code_combobox['values'][162] == self.separators[1]:
             self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[1], 162)
+        self.on_node_field_change()
+
+
+    def validate_node_fields(self, *args):
+        
+        check_connection = False
+        try:
+            if args[1]:
+                check_connection = True
+        except Exception:
+            pass
+
+        address = self.denaro_node_address_entry.get().strip()
+        port = self.denaro_node_port_entry.get().strip()
+        # Construct the address:port string conditionally including the port
+        node = f"{address}:{port}" if port else address
+        node_validation_enabled = self.disable_node_validation_var.get()
+
+        # Assuming wallet_client.Verification.validate_node_address exists and handles address with optional port
+        _ , node_str, string_valid, return_msg = wallet_client.Verification.validate_node_address([node, False], from_gui=True, check_connection=check_connection, referer="validate_node_fields")
+        
+        if return_msg != "":
+            self.node_validation_msg_label.config(text=return_msg)
+
+            if "ERROR" in return_msg:                
+                self.node_validation_msg_label.config(foreground='#ff0000')
+            else:
+                self.node_validation_msg_label.config(foreground='#008000')
+                if 'fade_node_validation_msg_label' in self.root.event_handler.thread_event and 'node_validation_msg_label' in self.root.gui_utils.fade_text_widgets:
+                    self.root.gui_utils.fade_text_widgets['node_validation_msg_label']['step'] = 1
+                else:
+                    self.root.wallet_thread_manager.start_thread("fade_node_validation_msg_label", self.root.gui_utils.fade_text, args=(self.node_validation_msg_label, 'node_validation_msg_label', 5,),)
+
+        if node_str is None:
+            node_str = node
+        
+        if check_connection:
+            self.test_connection_button.config(state='normal')
+
+        return node_str, string_valid, node_validation_enabled
+                
+
+    def test_node_connection(self):
+         self.test_connection_button.config(state='disabled')
+         
+         if 'fade_node_validation_msg_label' in self.root.event_handler.thread_event:
+            self.root.wallet_thread_manager.stop_thread('fade_node_validation_msg_label')
+
+         self.node_validation_msg_label.config(foreground='#008000')
+         self.node_validation_msg_label.config(text="Testing connection to node. Please wait...")
+         if self.node_validation_msg_label['text'] == "Testing connection to node. Please wait...":
+            self.root.update()
+            time.sleep(1)
+            self.root.wallet_thread_manager.start_thread("validate_node_fields",  self.validate_node_fields, args=(True,),)
+
+
+    def on_node_field_change(self, *args):
+        # Resets the flag to re-enable save button upon field change
+        if self.keep_save_button_disabled:
+            self.keep_save_button_disabled = False
+        self.update_save_button_state()
     
 
-    def validate_currency_code_interval(self):
-        if self.root.current_page == self:
-            self.validate_currency_code()
-        self.after(250, self.validate_currency_code_interval)
+    def update_save_button_state(self):
+        # Dynamically updates the 'Save Settings' button state based on validation
+        if self.check_setting_changes():
+            self.save_config_button.config(state='normal')
+        else:
+            self.save_config_button.config(state='disabled')
 
+
+    def check_setting_changes(self):
+        # Checks for changes in settings compared to the current configuration
+        current_config = self.root.config_handler.config_values
+
+        currency_code = self.currency_code_combobox.get().strip()
+        node_address = self.denaro_node_address_entry.get().strip()
+        node_port = self.denaro_node_port_entry.get().strip()
+
+        # Construct the address:port string conditionally including the port
+        node = f"{node_address}:{node_port}" if node_port else node_address
+        node_validation = not self.disable_node_validation_var.get()
+
+        currency_code_changed = (currency_code != current_config.get('default_currency'))
+        node_changed = (node != current_config.get('default_node', ''))
+        node_validation_changed = (str(node_validation) != current_config.get('node_validation', ''))
+        #fields_empty = not node_address  # Only check if address is empty since port is optional
+        #print(currency_code_changed, node_changed, not fields_empty)
+        settings_changed = self.currency_code_valid and (currency_code_changed or node_changed or node_validation_changed) and not self.keep_save_button_disabled
+        return settings_changed
+    
 
 class BlankPage(BasePage):
     def __init__(self, parent, root):
         super().__init__(parent, root)
-        ttk.Label(self, text="Blank Page").pack(expand=True)
+        ttk.Label(self, text="TBA").pack(expand=True)
 
 
 class DenaroWalletGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Denaro Wallet Client v0.0.6-beta GUI")
+        self.wallet_client_version = f"{wallet_client.wallet_client_version} GUI"
+        self.title(self.wallet_client_version)
         self.geometry("1024x576")
-        self.minsize(665, 374)
+        self.minsize(780, 390)
         icon = tk.PhotoImage(file="./denaro/gui_assets/denaro_logo.png")
         self.iconphoto(True, icon)
 
@@ -460,6 +617,8 @@ class DenaroWalletGUI(tk.Tk):
         atexit.register(self.wallet_thread_manager.stop_all_threads)
         self.wallet_operations = WalletOperations(self)
         self.dialogs = Dialogs(self)
+        self.custom_popup = CustomPopup(self)
+        self.config_handler = ConfigHandler(self)
 
         self.create_menus()
              
@@ -476,6 +635,7 @@ class DenaroWalletGUI(tk.Tk):
         self.settings_page = self.pages.get("Settings")
         self.event_handler = EventHandler(self)
         
+        self.config_handler.update_config_values()
         
 
     def create_menus(self):
@@ -490,13 +650,15 @@ class DenaroWalletGUI(tk.Tk):
         # Context Menu for Treeview
         self.treeview_context_menu = tb.Menu(self, tearoff=0)
         self.treeview_context_menu.add_command(label="Copy", command=self.gui_utils.copy_selection)
-        self.treeview_context_menu.add_command(label="Send", command=lambda: (self.gui_utils.set_address_combobox(show_send_page=True)))
+        self.treeview_context_menu.add_command(label="Send", command=lambda: (self.gui_utils.address_context_menu_selection(set_address_combobox=True, show_send_page=True)))
         self.treeview_context_menu.add_command(label="Address Info", command=self.dialogs.address_info)
+        self.treeview_context_menu.add_command(label="View on Explorer",  command=lambda: self.gui_utils.address_context_menu_selection(view_explorer=True))
 
         #Menu Bar
         self.menu_bar = tb.Menu(self, tearoff=0)
         self.file_menu = tb.Menu(self.menu_bar, tearoff=0)
         self.wallet_menu = tb.Menu(self.file_menu, tearoff=0)
+        self.help_menu = tb.Menu(self.menu_bar, tearoff=0)
 
         self.menu_bar.add_cascade(label="File", menu=self.file_menu)
         self.file_menu.add_cascade(label="Load Wallet", menu=self.wallet_menu)
@@ -508,6 +670,10 @@ class DenaroWalletGUI(tk.Tk):
         self.file_menu.add_command(label="Import Address")
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Close Wallet", command=self.gui_utils.close_wallet)
+        
+        self.menu_bar.add_cascade(label="Help", menu=self.help_menu)
+        self.help_menu.add_command(label="About", command=self.dialogs.about_wallet_dialog)
+
 
         self.config(menu=self.menu_bar)
         self.gui_utils.update_wallet_menu()
@@ -542,6 +708,7 @@ class DenaroWalletGUI(tk.Tk):
         self.stop_button.bind("<Enter>", func=lambda e: self.stop_button.config(image=self.stop_button_hover_image))
         self.stop_button.bind("<Leave>", func=lambda e: self.stop_button.config(image=self.stop_button_image))
         self.stop_button.bind("<Button-1>", self.gui_utils.on_stop_button_click)
+        ToolTip(self.stop_button, msg="Stop current operation.", delay=1)
 
         # Bind click event to the root window
         self.bind("<Button-1>", self.gui_utils.on_root_click)
@@ -681,6 +848,91 @@ class DenaroWalletGUI(tk.Tk):
         self.progress_bar.pack(side=tk.RIGHT, padx=(5,15))
         self.stop_button.pack(side=tk.RIGHT)
 
+class ConfigHandler:
+
+    def __init__(self, root):
+        self.root = root
+        self.config_values = wallet_client.read_config(disable_err_msg = True)        
+
+    def update_config_values(self):  
+        if self.config_values:
+            if 'default_currency' in self.config_values:
+                self.root.stored_data.currency_code = self.config_values.get('default_currency')
+                self.root.settings_page.currency_code_combobox.set(self.root.stored_data.currency_code)
+                self.root.settings_page.validate_currency_code()
+            
+            if 'default_node' in self.config_values:
+                default_node = self.config_values.get('default_node')
+                self.root.stored_data.default_node = default_node
+                
+                self.root.settings_page.denaro_node_address_entry.delete(0, 'end')
+                self.root.settings_page.denaro_node_port_entry.delete(0, 'end')
+
+                # Split the address from the port, if present
+                port_number = re.compile(r'^(?:http[s]?://)?(?:[\w\-\.]+)(?::(\d+))').search(default_node)
+                
+                if port_number and port_number.group(1):               
+                    default_node, _, node_port = default_node.rpartition(':')  # rpartition always returns a 3-tuple
+                    if not node_port:  # If no port is specified, rpartition will return the entire string as the address
+                        node_port = ''  # Default or empty string if no port is specified                    
+                    self.root.settings_page.denaro_node_port_entry.insert(0, node_port)
+            
+                self.root.settings_page.denaro_node_address_entry.insert(0, default_node)
+                
+            if 'node_validation' in self.config_values:
+                self.root.stored_data.node_validation = self.config_values.get('node_validation')
+                if self.root.stored_data.node_validation == "True":
+                    self.root.settings_page.disable_node_validation_var.set(False)
+                if self.root.stored_data.node_validation == "False":
+                    self.root.settings_page.disable_node_validation_var.set(True)
+    
+
+    def save_config(self):
+        #self.root.settings_page.node_validation_msg_label.config(text="")
+        
+        if not self.root.settings_page.denaro_node_address_entry.get().strip():
+            self.root.settings_page.denaro_node_address_entry.delete(0, 'end')
+            self.root.settings_page.denaro_node_address_entry.insert(0, "https://denaro-node.gaetano.eu.org")
+            self.root.settings_page.denaro_node_port_entry.delete(0, 'end')
+        
+        node, string_valid, node_validation_enabled = self.root.settings_page.validate_node_fields()
+        
+        if string_valid:
+            # Configuration saving logic needs to consider the optional port in validation
+            if self.root.settings_page.check_setting_changes():
+
+                if self.config_values['default_currency'] != self.root.stored_data.currency_code:
+                    self.config_values['default_currency'] = self.root.stored_data.currency_code
+                
+                if self.config_values['default_node'] != node:
+                    self.config_values['default_node'] = node
+                    self.root.stored_data.node_valid = False
+                    self.root.stored_data.node_validation_performed = False
+
+                if self.config_values['node_validation'] != str(not node_validation_enabled):
+                    self.config_values['node_validation'] = str(not node_validation_enabled)
+                    self.root.stored_data.node_valid = False
+                    self.root.stored_data.node_validation_performed = False
+                
+                temp_config = wallet_client.read_config(disable_err_msg = True)
+                
+                if temp_config != self.config_values:                    
+                    wallet_client.write_config(config=self.config_values)
+
+                new_config = wallet_client.read_config(disable_err_msg = True)
+
+                if new_config == self.config_values: 
+                    self.root.custom_popup.add_popup(timeout=5000, prompt=[{"label_config":"text='Settings saved to config file.', background='#2780e3', anchor='center', font='Calibri 10 bold'", "grid_config":"sticky='nsew'"}], 
+                                                                   grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}])
+                else:
+                    self.root.custom_popup.add_popup(timeout=5000, prompt=[{"label_config":"text='Settings not saved to config file.', background='#2780e3', anchor='center', font='Calibri 10 bold'", "grid_config":"sticky='nsew'"}], 
+                                                                   grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}])
+
+                self.update_config_values()
+
+        else:
+            self.root.settings_page.keep_save_button_disabled = True
+            self.root.settings_page.update_save_button_state()
 
 class EventHandler:
     def __init__(self, root):
@@ -712,6 +964,7 @@ class EventHandler:
     def event_listener(self):
         """Updates certain GUI elements based on what event is taking place"""
         self.thread_event = list(self.root.wallet_thread_manager.threads.keys())
+        #print(self.thread_event)
             
         if 'load_wallet' in self.thread_event:
             self.set_loading_wallet_state()
@@ -745,7 +998,7 @@ class EventHandler:
             for _ in range(10):  # Example: Update progress bar 10 times
                 self.root.progress_bar['value'] += 10  # Increment the progress bar value by 10
                 self.root.progress_bar.update_idletasks()  # Update the UI
-                time.sleep(0.01)  # Short sleep to simulate work being done
+                time.sleep(0.01)
                 if self.root.progress_bar['value'] == progress_bar_goal:
                     self.root.stored_data.progress_bar_increment = False
         
@@ -909,6 +1162,7 @@ class EventHandler:
 class GUIUtils:
     def __init__(self, root):
         self.root = root
+        self.fade_text_widgets = {}
 
 
     def toggle_sidebar(self):
@@ -996,8 +1250,7 @@ class GUIUtils:
         try:
             if isinstance(widget, (tk.Entry, AutocompleteCombobox)):
                 try:
-                    disable_items = widget.getvar(name="disable_context_menu_items")
-                    if disable_items:
+                    if str(widget["state"]) == "readonly":
                         textboxes_context_menu.entryconfig("Cut", state="disabled")
                         textboxes_context_menu.entryconfig("Paste", state="disabled")
                         textboxes_context_menu.entryconfig("Delete", state="disabled")
@@ -1026,6 +1279,7 @@ class GUIUtils:
                 treeview_context_menu.entryconfig("Copy", state="normal" if len(row_id) > 0 else "disabled")
                 treeview_context_menu.entryconfig("Send", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
                 treeview_context_menu.entryconfig("Address Info", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
+                treeview_context_menu.entryconfig("View on Explorer", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
                 self.root.account_page.accounts_tree.selection_set(row_id)
                 self.root.current_event = event
                 treeview_context_menu.tk_popup(event.x_root+1, event.y_root+1)
@@ -1073,7 +1327,10 @@ class GUIUtils:
             col_id = int(widget.identify_column(self.root.current_event.x).replace('#', '')) - 1
             if len(row_id) > 0:            
                 item = widget.item(row_id)
-                clipboard_text = item['values'][col_id]
+                try:
+                    clipboard_text = item['values'][col_id]
+                except IndexError:
+                    clipboard_text = ''
                 self.root.clipboard_clear()
                 self.root.clipboard_append(clipboard_text)
         elif isinstance(widget, tk.Entry):
@@ -1115,8 +1372,7 @@ class GUIUtils:
             # Clipboard does not contain text or other error
             pass
 
-
-    def set_address_combobox(self, event=None, show_send_page=False):
+    def address_context_menu_selection(self, event=None, show_send_page=False, set_address_combobox=False, view_explorer=False):
         if event:
             widget = event.widget 
         else:
@@ -1128,9 +1384,13 @@ class GUIUtils:
             col_id = int(widget.identify_column(event.x).replace('#', '')) - 1
             if len(row_id) > 0 and col_id == 0:            
                 item = widget.item(row_id)
-                self.root.send_page.send_from_combobox.set(item['values'][0])
+                if set_address_combobox:
+                    self.root.send_page.send_from_combobox.set(item['values'][0])
                 if show_send_page:
                     self.root.show_page("Send")
+                if view_explorer:
+                    url = f"https://explorer.denaro.is/address/{item['values'][0]}"
+                    self.open_link(url, show_link=True)
 
 
     def on_root_click(self, event):
@@ -1138,7 +1398,7 @@ class GUIUtils:
         Clears selections if the click occurred outside selectable widgets and not clicking on a Treeview's or ScrolledText's scrollbar.
         """
         widget = event.widget
-        clicked_on_associated_scrollbar = False
+        clicked_on_scrollbar = False
         
         for sel_widget in self.root.selectable_widgets:
             # Check for element scrollbars
@@ -1146,11 +1406,11 @@ class GUIUtils:
                 widget_container = sel_widget.master
                 for child in widget_container.winfo_children():
                     if child == widget and isinstance(child, tk.Scrollbar):
-                        clicked_on_associated_scrollbar = True
+                        clicked_on_scrollbar = True
                         break
                     
         # Clear selections if the click is not on a scrollbar of a Treeview or ScrolledText
-        if not clicked_on_associated_scrollbar:
+        if not clicked_on_scrollbar:
             # Clear selection in all Entry widgets except the one being clicked, if it is an Entry
             for entry_widget in [w for w in self.root.selectable_widgets if isinstance(w, tk.Entry)]:
                 if widget != entry_widget:
@@ -1174,7 +1434,7 @@ class GUIUtils:
     
 
     def on_treeview_double_click(self, event=None):
-        self.set_address_combobox(event, show_send_page=True)
+        self.address_context_menu_selection(event, set_address_combobox=True, show_send_page=True)
 
 
     def identify_selectable_widgets(self, container):
@@ -1215,11 +1475,12 @@ class GUIUtils:
         # Add a separator for better visual distinction
         self.root.wallet_menu.add_separator()
         # Populate the wallet menu with files and folders
-        self.populate_wallet_menu('./wallets/tests', self.root.wallet_menu)
+        self.populate_wallet_menu('./wallets', self.root.wallet_menu)
 
 
     def populate_wallet_menu(self, path, menu):
         # List all files and directories at the given path
+        wallet_client.ensure_wallet_directories_exist()
         items = os.listdir(path)
         # Sort items in alphabetical order
         items.sort()
@@ -1233,7 +1494,7 @@ class GUIUtils:
                 # Add the folder menu as a cascade to the parent menu
                 menu.add_cascade(label=item, menu=folder_menu)
                 # Recursively populate the folder menu with its contents
-                self.populate_menu(full_path, folder_menu)
+                self.populate_wallet_menu(full_path, folder_menu)
             else:
                 # For files, add a command to the current menu
                 menu.add_command(label=item, command=lambda file=full_path: self.root.wallet_operations.load_wallet(file))  
@@ -1285,20 +1546,21 @@ class GUIUtils:
         """
         current_heading = tree.heading(col)['text']
         # Remove existing sort order indicator if present
-        if " ↾" in current_heading or " ⇂" in current_heading:
+        if " ↾" in current_heading or " ⇂" in current_heading or " ⥮" in current_heading:
             base_name = current_heading[:-2]
         else:
             base_name = current_heading
+
     
         if not self.root.stored_data.wallet_loaded:
             for column in self.root.account_page.column_sort_order:
                 self.root.account_page.column_sort_order[column] = False
                 # Update the sorted column heading with the new sort order indicator
-                tree.heading(col, text=base_name)
+                tree.heading(col, text=base_name+" ⥮")
                 return
     
-        if not self.root.stored_data.balance_loaded:
-            return
+        #if not self.root.stored_data.balance_loaded:
+        #    return
     
         for column in self.root.account_page.column_sort_order:
             if column != col:
@@ -1351,16 +1613,16 @@ class GUIUtils:
             if col_name != col:
                 # Retrieve the original heading without sort order indicator
                 other_heading = tree.heading(col_name)['text']
-                if " ↾" in other_heading or " ⇂" in other_heading:
+                if " ↾" in other_heading or " ⇂" in other_heading or " ⥮" in current_heading:
                     other_base_name = other_heading[:-2]
                 else:
                     other_base_name = other_heading
                 tree.heading(col_name, text=other_base_name, command=lambda _col=col_name: self.sort_treeview_column(tree, _col))
-                title_width = self.root.account_page.treeview_font.measure(other_base_name) + 20
+                title_width = self.root.account_page.treeview_font.measure(other_base_name) + 40
                 self.root.account_page.column_min_widths[col_name] = title_width
             else:
-                if " ↾" not in current_heading and " ⇂" not in current_heading:
-                    title_width = self.root.account_page.treeview_font.measure(current_heading) + 30  # Extra space for padding
+                if " ↾" not in current_heading and " ⇂" not in current_heading and not " ⥮" in current_heading:
+                    title_width = self.root.account_page.treeview_font.measure(current_heading) + 20  # Extra space for padding
                     self.root.account_page.column_min_widths[col] = title_width
 
 
@@ -1392,9 +1654,9 @@ class GUIUtils:
             self.root.account_page.denaro_price_text.config(text=f'DNR/{self.root.stored_data.currency_code} Price: {self.root.stored_data.currency_symbol}{formatted_price_str}{update_price_str}')
     
 
-    def open_link(self, url):
+    def open_link(self, url, show_link=False):
         """Ask for user consent before opening a URL in the web browser."""
-        if self.root.wallet_operations.callbacks.post_confirmation_prompt(title="Open Link", msg="Do you want to open this link in your browser?"):
+        if self.root.dialogs.confirmation_prompt(title="Open Link", msg="Do you want to open this link in your browser?", msg_2=url if show_link else None, is_callback=False):
             webbrowser.open_new(url)
 
 
@@ -1427,9 +1689,104 @@ class GUIUtils:
         return None
     
 
+    def fade_text(self, stop_signal=None, widget=None, widget_name=None, timeout=0, target_color='#FFFFFF'):
+        """
+        Gradually fades the label's current foreground color to the target color in 20 steps.
+        
+        Args:
+        stop_signal (bool): A signal to stop the fade effect externally.
+        widget (Widget): The widget to apply the fade effect on.
+        widget_name (str): The unique name identifier for the widget.
+        target_color (str): The target color in hex format to which the text should fade.
+        """
+
+        # Initialize fade_text_widgets if this is the first time for this widget_name
+        if widget_name not in self.fade_text_widgets:
+            self.fade_text_widgets[widget_name] = {"widget": widget, "step": 0}
+        
+            if timeout > 0:
+                time.sleep(timeout)
+
+        # Continuously update the fade effect until the maximum step is reached or stop_signal is set
+        while True:            
+            # Break if stop signal is set
+            if stop_signal and stop_signal.is_set():
+                if widget_name in self.fade_text_widgets:
+                    self.fade_text_widgets.pop(widget_name, None)
+                break
+            
+            try:
+                if widget_name in self.fade_text_widgets:
+                    # Fetch the current step value from fade_text_widgets to allow external control
+                    current_step = self.fade_text_widgets[widget_name]["step"]
+            
+                    # Break if the maximum step has been reached
+                    if current_step > 20:
+                        # Clean up after the fade is complete
+                        self.fade_text_widgets.pop(widget_name, None)
+                        break
+            
+                    # Get the current foreground color of the label
+                    current_color = widget.cget("foreground")
+                    
+                    # Convert the current and target colors to RGB tuples
+                    current_color_rgb = self.color_to_rgb(str(current_color))
+                    target_color_rgb = self.color_to_rgb(target_color)
+                    
+                    # Calculate the new RGB values by incrementing each component towards the target color
+                    new_rgb = tuple(
+                        min(255, int(color + (target - color) * (current_step / 20)))
+                        for color, target in zip(current_color_rgb, target_color_rgb)
+                    )
+                    
+                    # Convert the new RGB tuple back to hex format
+                    new_color = '#{:02x}{:02x}{:02x}'.format(*new_rgb)
+                    
+                    # Update the label's foreground color to the calculated new color
+                    widget.config(foreground=new_color)
+                    
+                    # Increment the step value in fade_text_widgets
+                    self.fade_text_widgets[widget_name]["step"] = current_step + 1
+                    
+                    # Update the GUI to keep it responsive
+                    self.root.update_idletasks()
+                    
+                    # Wait for 100 milliseconds before the next iteration
+                    time.sleep(0.1)
+                else:
+                    break
+            except tk.TclError:
+                self.fade_text_widgets.pop(widget_name, None)
+                break
+        
+    
+    def color_to_rgb(self, color):
+        """
+        Converts a color (name, hex string, or RGB tuple) to an RGB tuple.
+        
+        Args:
+        color (str or tuple): The color, which may be a named color, a hex string, or an RGB tuple.
+        
+        Returns:
+        tuple: An (R, G, B) tuple representing the color.
+        """
+        # Handle case where color is already an RGB tuple
+        if isinstance(color, tuple):
+            return color
+    
+        # Handle color names by converting them to RGB using tkinter's color lookup
+        try:
+            rgb_color = self.winfo_rgb(color)  # Returns a tuple of (r, g, b), but in 16-bit (0-65535 range)
+            return tuple(c // 256 for c in rgb_color)  # Convert 16-bit values to 8-bit (0-255 range)
+        except:
+            # Assume it's a hex string if color lookup fails
+            color = color.lstrip('#')
+            return tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+    
+
     def close_wallet(self):
         if self.root.stored_data.operation_mode != 'send':
-            self.root.title(f"Denaro Wallet Client v0.0.6-beta GUI")
+            self.root.title(self.root.wallet_client_version)
             self.root.account_page.refresh_balance_button.config(state='disabled')
             self.root.wallet_thread_manager.stop_specific_threads(names=['load_wallet', 'load_balance'])
             self.root.wallet_operations.callbacks.clear_wallet_data(preserve_wallet_data=False)
@@ -1437,49 +1794,6 @@ class GUIUtils:
         else:
             self.root.dialogs.messagebox("Error", "Can not close wallet while a transaction is taking place.")
             return
-
-    #Wait dialog un-used for now
-    def wait_dialog_callback(self, label=None, master=None, state=None):
-        master.focus_set()
-        self.root.wallet_thread_manager.start_thread("wait_dialog_listener", self.root.gui_utils.wait_dialog_listener, args=(label,),)
-
-
-    def wait_dialog_listener(self, stop_signal=None, label=None):
-        while True:
-            if self.root.stored_data.wait_finished or (stop_signal and stop_signal.is_set()):
-                break
-            else:
-                continue
-            
-        label.grid_remove()
-        
-
-
-    def wait_dialog(self, title, msg, is_callback=False):
-
-        result, _, _ = CustomDialog(parent=self.root, title=title,
-                                    prompt=[
-                                            {
-                                             "type": "label",
-                                             "variable_name":"label_1",
-                                             "config":"text='{}', wraplength=500, justify='left'".format(msg),
-                                             "command": "command_str='wait_dialog_callback', args='(self.widget_references[\"label_1\"],self.master,)', execute_on_load=True",
-                                             "binds": [{"bind_config":"event='<Unmap>', callback_str='self.submit_entry'"}],
-                                             "grid_config":"column=0, columnspan=2"
-                                             },
-                                             ], true_on_submit=True, callbacks={"wait_dialog_callback":self.wait_dialog_callback}).result
-        
-        if result[0]:
-            if 'wait_dialog_listener' in self.root.event_handler.thread_event:
-                self.root.wallet_thread_manager.stop_thread("wait_dialog_listener")
-
-            if is_callback:
-                self.root.wallet_thread_manager.dialog_event.set()
-            else:
-                return
-        
-        
-
         
 
 class WalletThreadManager:
@@ -1668,13 +1982,13 @@ class WalletOperations:
         self.root.account_page.refresh_balance_button.config(state='disabled')
 
         current_heading = self.root.account_page.accounts_tree.heading('Value')['text']        
-        if " ↾" in current_heading or " ⇂" in current_heading:
+        if " ↾" in current_heading or " ⇂" in current_heading or " ⥮" in current_heading:
             base_name = current_heading[-7:]
         else:
             base_name = "Value"
 
         self.root.account_page.accounts_tree.heading('Value', text=f"{self.root.stored_data.currency_code} {base_name}")
-        title_width = self.root.account_page.treeview_font.measure(f"{self.root.stored_data.currency_code} {base_name}") + 20  # Extra space for padding
+        title_width = self.root.account_page.treeview_font.measure(f"{self.root.stored_data.currency_code} {base_name}") + 30  # Extra space for padding
         #self.root.account_page.column_min_widths["Value"] = title_width
         self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
 
@@ -1692,7 +2006,8 @@ class WalletOperations:
     def get_balance_data(self, stop_signal=None, file_path=None):
         self.root.event_handler.stop_getting_balance = stop_signal
         if self.root.stored_data.wallet_data:
-            self.root.stored_data.balance_loaded = wallet_client.checkBalance(file_path, password=None, to_json=True, currency_code=self.root.stored_data.currency_code, currency_symbol=self.root.stored_data.currency_symbol, address_data=json.dumps(self.root.stored_data.wallet_data), from_gui=True, callback_object=self.callbacks,stop_signal=stop_signal)
+            node, _ , _ = self.root.settings_page.validate_node_fields()
+            self.root.stored_data.balance_loaded = wallet_client.checkBalance(file_path, password=None, node=node, to_json=True, currency_code=self.root.stored_data.currency_code, currency_symbol=self.root.stored_data.currency_symbol, address_data=json.dumps(self.root.stored_data.wallet_data), from_gui=True, callback_object=self.callbacks,stop_signal=stop_signal)
             
 
     def update_balance_data(self, balance_data=None, stop_signal=None):
@@ -1782,8 +2097,8 @@ class WalletOperations:
                                 break
                 
                 msg_str = ""  # Reinitialize msg_str for each transaction
-                transaction, msg_str = wallet_client.prepareTransaction(filename=None, password=None, totp_code=None, amount=amount, sender=sender, private_key=private_key, receiver=receiver, message=message, node=None, from_gui=True)
-                
+                node, _ , _ = self.root.settings_page.validate_node_fields()
+                transaction, msg_str = wallet_client.prepareTransaction(filename=None, password=None, totp_code=None, amount=amount, sender=sender, private_key=private_key, receiver=receiver, message=message, node=node, from_gui=True)
                 self.root.send_page.tx_log.config(state='normal')
                 # Your logic to prepare and send transaction, then update msg_str
         
@@ -2004,6 +2319,19 @@ class Callbacks:
         self.root.stored_data.ask_string_result = None
         return result
     
+    def post_password_dialog(self, title, msg, show=None):
+        # Reset the event and result
+        self.root.wallet_thread_manager.dialog_event.clear()
+        self.root.stored_data.ask_string_result = None
+        # Add the ask_string task to the queue
+        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.password_dialog(title, msg, show, is_callback=True))
+        # Wait for the dialog to complete
+        self.root.wallet_thread_manager.dialog_event.wait()
+        # Return the result
+        result = self.root.stored_data.ask_string_result
+        self.root.stored_data.ask_string_result = None
+        return result
+    
 
     def post_confirmation_prompt(self, title, msg):
         # Reset the event and result
@@ -2067,12 +2395,6 @@ class Callbacks:
         #self.root.stored_data.ask_bool_result = None
         #return result
     
-    def post_wait_dialog(self, title=None, msg=None):
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_bool_result = None
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.gui_utils.wait_dialog(title=title, msg=msg, is_callback=True))
-        
-        
     
     def post_backup_mnemonic_dialog(self, mnemonic=None):
         # Reset the event and result
@@ -2139,11 +2461,11 @@ class Callbacks:
                 # Remove existing sort order indicator if present
         for column in self.root.account_page.column_sort_order:
             current_heading = self.root.account_page.accounts_tree.heading(column)['text']
-            if " ↾" in current_heading or " ⇂" in current_heading:
+            if " ↾" in current_heading or " ⇂" in current_heading or " ⥮" in current_heading:
                 base_name = current_heading[:-2]
             else:
                 base_name = current_heading
-
+            base_name += " ⥮"
             self.root.account_page.column_sort_order[column] = False
             # Update the sorted column heading with the new sort order indicator
             self.root.account_page.accounts_tree.heading(column, text=base_name)
@@ -2192,6 +2514,11 @@ class StoredData:
 
     confirm_mnemonic_back_button_press: Optional[bool] = False
     wait_finished: Optional[bool] = False
+
+    default_node: Optional[str] = None
+    node_validation: Optional[str] = None
+    node_valid: Optional[bool] = None
+    node_validation_performed: bool = False
     
     
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 import tkinter as tk
+import tkinter.ttk as ttk
+
 from tkinter import scrolledtext
-import ttkbootstrap as ttk
+import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 import re
 import _tkinter
@@ -8,6 +10,8 @@ import functools
 from PIL import Image, ImageTk
 import ast
 from tkinter import font 
+from tktooltip import ToolTip
+import uuid
 
 class CustomDialog:
     def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, **kwargs):
@@ -17,34 +21,32 @@ class CustomDialog:
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(title)
         
-        self.styles = ttk.Style()
+        self.styles = tb.Style()
+        self.dialog.transient(parent)  # Make the dialog a transient window of the parent
 
         # Position the dialog window relative to the parent window
-        self.dialog.geometry("+{}+{}".format(parent.winfo_x() + 100, parent.winfo_y() + 100))
+        self.center_dialog(parent)
+        self.validate_center(parent)
 
         # Make the dialog not resizable
         self.dialog.resizable(False, False)
 
-        
 
-        self.master = ttk.Frame(self.dialog)
+        self.master = tb.Frame(self.dialog)
         self.master.pack(padx=10, pady=5)
-        
         
         self.entry_variables = {}        
         self.checkbox_variables = {}
         self.radio_variables = {}
         self.widget_references = {}
-
         self.selectable_widgets = []
+        self.variable_manager = WidgetVariableManager()
 
         row_count = 0
-
-        
-       
         
         # Loop through each item in prompt
         for item_index, item in enumerate(prompt):
+            widget_id = str(uuid.uuid4())
             
             # Parse grid config
             grid_config = self.parse_config_string(item.get('grid_config', ''))
@@ -74,16 +76,20 @@ class CustomDialog:
                 else:                    
                     widget_parent = self.master
             
-            if widget_type:
-                widget = self.create_widget(widget_type, widget_parent, row, grid_config, pack_config, item, item_index)
-                if 'variable_name' in item:
-                    self.widget_references[item['variable_name']] = widget
             
-            # Handle widget variables
+            
+             # Set variables for this widget using the unique ID
             if 'variables' in item:
-                for var in item['variables']:
-                    var_config = self.parse_config_string(var.get('set_var', ''))
-                    widget.setvar(**var_config)
+                variables = item.get('variables', {})  # This will default to an empty dictionary if 'variables' is missing
+                self.variable_manager.update_variables(widget_id, variables)
+
+            if widget_type:
+                widget = self.create_widget(widget_type, widget_parent, row if grid_config else 0, grid_config, pack_config, item, item_index, widget_id)
+
+                if 'widget_name' in item:
+                    self.widget_references[item['widget_name']] = widget  
+
+                          
 
             # Handle widget command
             command_config = self.parse_config_string(item.get('command', ''))         
@@ -98,11 +104,21 @@ class CustomDialog:
                     bind_config = self.parse_config_string(bind.get('bind_config', ''))
                     event, callback = self.resolve_callback(**bind_config)
                     widget.bind(event, callback)
+            
+            if 'tooltip_config' in item:
+                tooltip_config = self.parse_config_string(item.get('tooltip_config', ''))
+                ToolTip(widget, **tooltip_config)
 
             # Increment the row count for the next element
             if grid_config:
                 row_count += 1
         
+               # Center dialog window after all widgets are added
+        self.center_dialog(parent)
+        # Validation check to re-center if necessary
+        self.dialog.after(50, lambda: self.validate_center(parent))
+
+
         self.dialog.bind("<Return>", lambda event: self.submit_entry())
         self.dialog.bind("<Button-1>", self.on_root_click)
         
@@ -110,34 +126,55 @@ class CustomDialog:
         self.result = None
         self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
         self.dialog.transient(parent)  # Make the dialog a transient window of the parent
-        self.dialog.grab_set()  # Modal dialog
-        self.dialog.wait_window()  # Wait for the dialog to be closed
+        try:
+            self.dialog.grab_set()  # Modal dialog
+        except tk.TclError:
+            pass
 
-    def create_widget(self, widget_type, widget_parent, row, grid_config, pack_config, item, item_index):
+        self.dialog.wait_window()  # Wait for the dialog to be closed
+    
+
+    def center_dialog(self, parent):
+        """Center the dialog relative to the parent window."""
+        self.dialog.update_idletasks()  # Ensure accurate width/height values
+        x = parent.winfo_x() + parent.winfo_width() // 2 - self.dialog.winfo_width() // 2
+        y = parent.winfo_y() + parent.winfo_height() // 2 - self.dialog.winfo_height() // 2
+        self.dialog.geometry(f"+{x}+{y}")
+
+    def validate_center(self, parent):
+        """Check if the dialog is centered; if not, re-center."""
+        self.dialog.update_idletasks()  # Ensure accurate width/height values
+        current_x, current_y = self.dialog.winfo_x(), self.dialog.winfo_y()
+        expected_x = parent.winfo_x() + parent.winfo_width() // 2 - self.dialog.winfo_width() // 2
+        expected_y = parent.winfo_y() + parent.winfo_height() // 2 - self.dialog.winfo_height() // 2
+        if (current_x, current_y) != (expected_x, expected_y):
+            self.dialog.geometry(f"+{expected_x}+{expected_y}")
+
+    def create_widget(self, widget_type, widget_parent, row, grid_config, pack_config, item, item_index, widget_id):
         widget_map = {
-            'separator': ttk.Separator,
-            'label': ttk.Label,
-            'entry': ttk.Entry,
+            'separator': tb.Separator,
+            'label': tb.Label,
+            'entry': tb.Entry,
             'textarea': tk.Text,
-            'button': ttk.Button,
-            'checkbox': ttk.Checkbutton,
+            'button': tb.Button,
+            'checkbox': tb.Checkbutton,
             'scrolledtext': scrolledtext.ScrolledText,
-            'radiobutton': ttk.Radiobutton,
-            'combobox': ttk.Combobox,
-            'spinbox': ttk.Spinbox,
-            'progressbar': ttk.Progressbar,
-            'scale': ttk.Scale,
+            'radiobutton': tb.Radiobutton,
+            'combobox': tb.Combobox,
+            'spinbox': tb.Spinbox,
+            'progressbar': tb.Progressbar,
+            'scale': tb.Scale,
             'listbox': tk.Listbox,
             'canvas': tk.Canvas,
-            'frame': ttk.Frame,
-            'labelframe': ttk.Labelframe,
-            'panedwindow': ttk.PanedWindow,
-            'notebook': ttk.Notebook,
-            'treeview': ttk.Treeview,
-            'menubutton': ttk.Menubutton,
+            'frame': tb.Frame,
+            'labelframe': tb.Labelframe,
+            'panedwindow': tb.PanedWindow,
+            'notebook': tb.Notebook,
+            'treeview': tb.Treeview,
+            'menubutton': tb.Menubutton,
             'message': tk.Message,
-            'checkbutton': ttk.Checkbutton,
-            'radiobutton': ttk.Radiobutton,
+            'checkbutton': tb.Checkbutton,
+            'radiobutton': tb.Radiobutton,
             'self.dialog': self.dialog,
             'self.master': self.master
         }
@@ -158,7 +195,11 @@ class CustomDialog:
             # Handle special cases for widgets with additional setup
             if widget_type in ['entry', 'textarea', 'scrolledtext']: 
                 if custom_class_name and custom_class_name in self.classes:
-                    widget = widget_class(widget_map[widget_type], master=widget_parent)
+                    class_config = None
+                    if "class_config" in item:
+                        class_config = self.parse_config_string(item.get('class_config',''))
+                    
+                    widget = widget_class(widget_map[widget_type], master=widget_parent, config=class_config)
                 else:
                     widget = widget_class(widget_parent)
 
@@ -170,23 +211,18 @@ class CustomDialog:
                     #widget.focus_set()
                 
                 insert_config = self.parse_config_string(item.get('insert', ''))
+
                 if insert_config:
                     widget.insert(tk.END, **insert_config)
                     
                     if widget_type == 'entry':
-                        try:
-                            if eval(widget.getvar(name='expand_entry_width')):
-                                width = self.update_entry_width(widget)
-    
-                                #text_length = len(var.get())
-                                #entry_width = text_length  # Adding a little extra space
-                                widget.config(width=width)
+                        if self.variable_manager.has_variable(widget_id, 'expand_entry_width'):
+                            if self.variable_manager.has_variable(widget_id, 'entry_max_width'):
+                                max_width = self.variable_manager.get_variable(widget_id, 'entry_max_width')
                             else:
-                                pass
-                        except tk.TclError:
-                            pass
-
-                        
+                                max_width = 70
+                            text_width = self.update_entry_width(widget, font_string=widget_config.get('font'))    
+                            widget.config(width=text_width)
 
                     if widget_type == 'textarea' or widget_type == 'scrolledtext':
                         line_count = int(widget.index('end-1c').split('.')[0])
@@ -211,11 +247,12 @@ class CustomDialog:
             
             else:
                 if custom_class_name and custom_class_name in self.classes:
-                    widget = widget_class(widget_map[widget_type], master=widget_parent)
+                    class_config = None
+                    if "class_config" in item:
+                            class_config = self.parse_config_string(item.get('class_config',''))
+                    widget = widget_class(widget_map[widget_type], master=widget_parent, class_config=class_config)
                 else:
                     widget = widget_class(widget_parent)
-               
-            
                                
             # Handle layout config
             if widget_type != 'self.dialog' and widget_type != 'self.master':
@@ -231,8 +268,6 @@ class CustomDialog:
             
             widget.config(**widget_config)
 
-            #print(self.get_config(widget))
-           
             return widget
     
     def get_config(self, widget):
@@ -243,14 +278,23 @@ class CustomDialog:
         return options, widget.winfo_parent()
 
 
-    def update_entry_width(self, entry):
-        # Hacky as shit but gets the job done
-        font_instance = font.Font(font=entry.cget("font"))
+    def update_entry_width(self, entry, font_string=None):
+            # Parse the font string
+        parts = font_string.split()
+        family = " ".join(parts[:-2])  # Font family
+        size = int(parts[-2])  # Font size
+        style = parts[-1] if len(parts) > 2 else "normal"  # Font style
+        weight = "bold" if "bold" in style else "normal"
+        slant = "italic" if "italic" in style else "roman"
+    
+        # Create the font object
+        custom_font = font.Font(family=family, size=size, weight=weight, slant=slant)
+    
+        # Measure the width of the text in the Entry widget
         text = entry.get()
-        text_width = font_instance.measure(text)
-        max_width = 70  # Set a maximum width in pixels
-        text_width = min(max_width, text_width)
-        return text_width  # Adding a little extra space
+        text_width = custom_font.measure(text)
+        #text_width = min(max_width, text_width)
+        return int(text_width / size) + 26  # Adding a little extra space
         #return adjust_width
 
 
@@ -411,7 +455,7 @@ class CustomDialog:
         """
         selectable_widgets = []
         for child in container.winfo_children():
-            if isinstance(child, (tk.Entry, tk.Text, scrolledtext.ScrolledText, ttk.Combobox, ttk.Treeview)):
+            if isinstance(child, (tk.Entry, tk.Text, scrolledtext.ScrolledText, tb.Combobox, tb.Treeview)):
                 selectable_widgets.append(child)
             selectable_widgets.extend(self.identify_selectable_widgets(child))  # Recursive call for nested containers
         return selectable_widgets
@@ -428,9 +472,9 @@ class CustomDialog:
                 elif isinstance(widget, tk.Text):
                     widget.tag_remove(tk.SEL, "1.0", tk.END)
                     widget.mark_set(tk.INSERT, "1.0")
-                elif isinstance(widget, ttk.Combobox):
+                elif isinstance(widget, tb.Combobox):
                     widget.selection_clear()
-                elif isinstance(widget, ttk.Treeview):
+                elif isinstance(widget, tb.Treeview):
                     for item in widget.selection():
                         widget.selection_remove(item)
 
@@ -440,19 +484,19 @@ class CustomDialog:
         Clears selections if the click occurred outside selectable widgets and not clicking on a Treeview's or ScrolledText's scrollbar.
         """
         widget = event.widget
-        clicked_on_associated_scrollbar = False
+        clicked_on_scrollbar = False
         
         for sel_widget in self.selectable_widgets:
             # Check for element scrollbars
-            if isinstance(sel_widget, (ttk.Treeview, scrolledtext.ScrolledText)):
+            if isinstance(sel_widget, (tb.Treeview, scrolledtext.ScrolledText)):
                 widget_container = sel_widget.master
                 for child in widget_container.winfo_children():
                     if child == widget and isinstance(child, tk.Scrollbar):
-                        clicked_on_associated_scrollbar = True
+                        clicked_on_scrollbar = True
                         break
                     
         # Clear selections if the click is not on a scrollbar of a Treeview or ScrolledText
-        if not clicked_on_associated_scrollbar:
+        if not clicked_on_scrollbar:
             # Clear selection in all Entry widgets except the one being clicked, if it is an Entry
             for entry_widget in [w for w in self.selectable_widgets if isinstance(w, tk.Entry)]:
                 if widget != entry_widget:
@@ -463,3 +507,29 @@ class CustomDialog:
 
             # Invoke global deselect
             self.global_deselect(except_widget=widget)
+
+
+class WidgetVariableManager:
+    def __init__(self):
+        # Store variables in a dictionary, with each widget's unique ID as the key
+        self.widget_variables = {}
+
+    def set_variable(self, widget_id, variable_name, value):
+        if widget_id not in self.widget_variables:
+            self.widget_variables[widget_id] = {}
+        self.widget_variables[widget_id][variable_name] = value
+
+    def get_variable(self, widget_id, variable_name):
+        return self.widget_variables.get(widget_id, {}).get(variable_name)
+
+    def get_all_variables(self, widget_id):
+        return self.widget_variables.get(widget_id, {})
+
+    def update_variables(self, widget_id, variables):
+        if widget_id not in self.widget_variables:
+            self.widget_variables[widget_id] = {}
+        self.widget_variables[widget_id].update(variables)
+    
+    def has_variable(self, widget_id, variable_name):
+        """Check if a specific variable exists for a given widget ID."""
+        return widget_id in self.widget_variables and variable_name in self.widget_variables[widget_id]

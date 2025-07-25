@@ -4,6 +4,7 @@ import ttkbootstrap as tb
 from .custom_dialog import CustomDialog
 from PIL import ImageTk, Image
 import _tkinter
+from tkinter import font
 
 class Dialogs:
 
@@ -1264,15 +1265,89 @@ class Dialogs:
                                      "grid_config":"row=6, column=1, sticky='e', padx=(0, 10), pady=(75, 10)"}
                                      ], true_on_submit=True, callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink}, classes={"HyperlinkLabel":HyperlinkLabel}).result
         
-    def tfa_qr_code_dialog(self):
-        pass
+    def show_2FA_QR_dialog(self, qr_window_data, from_gui=False):
+        """
+        Creates and manages the 2FA QR Code dialog. This method is now the
+        unified entry point for both GUI and non-GUI modes.
+        
+        Args:
+            qr_window_data (_2FA_QR_Dialog): The data/state object for the dialog.
+            from_gui (bool): Flag indicating the execution context.
+        """
+        # Determine the parent window for the dialog.
+        # In GUI mode, the parent is the main application window.
+        # In non-GUI mode, the parent is None, which causes CustomDialog
+        # to create its own temporary root.
+        parent = qr_window_data.callback_object.root if from_gui else None
+
+        # Create a controller for the dialog's logic.
+        # It's given the data object so it can read/write state.
+        dialog_functions = DialogFunctions(qr_window_data, self, from_gui=from_gui)
+        # The prompt is now fully declarative and robust.
+        prompt = [
+            {"type": "label",
+             "widget_name": "countdown_label",
+             "config": "text='Closing in: 60s', foreground='red', font='Helvetica 12'",
+             "grid_config": "row=0, column=0, sticky='w', padx=5, pady=5"},
+
+            {"type": "button",
+             "widget_name": "reveal_button",
+             "config": "text='Reveal 2FA Token'",
+             "grid_config": "row=0, column=1, sticky='e', padx=5, pady=5",
+             "command": "command_str='handle_click'"},
+
+            {"type": "label",
+             "widget_name": "qr_label",
+             "grid_config": "row=1, column=0, columnspan=2, pady=10"},
+
+            {"type": "entry",
+             "widget_name": "secret_entry",
+             "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
+             "config": "style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold', justify='center'",
+             "variables": {"expand_entry_width": True},
+             "grid_config": "row=2, column=0, columnspan=2, pady=5, padx=10, sticky='ew'",
+             "binds": [{"bind_config": "event='<Button-3>', callback_str='self.callbacks[\"handle_context_menu\"]'"},
+                       {"bind_config": "event='<Double-1>', callback_str='self.callbacks[\"handle_double_click\"]'"},
+                       {"bind_config": "event='<Control-c>', callback_str='self.callbacks[\"handle_copy\"]'"},
+                       {"bind_config": "event='<Control-a>', callback_str='self.callbacks[\"handle_select_all\"]'"}]},
+
+            {"type": "label",
+             "widget_name": "message_label",
+             "config": "text='To enable 2FA, scan the QR code with an authenticator app, then provide the one-time code in the terminal.', wraplength=400, justify='center'",
+             "grid_config": "row=3, column=0, columnspan=2, padx=10, pady=10"},
+
+            {"type": "label",
+             "widget_name": "setup_trigger",
+              "config": "",
+              "command": "command_str='initial_setup', args='(self,)', execute_on_load=True",
+              "grid_config": "row=4"}
+        ]
+
+        # Map the string names in the prompt to the actual functions.
+        callbacks = {
+            "initial_setup": dialog_functions._2FA_initial_setup,
+            "handle_click": dialog_functions._2FA_handle_click,
+            "handle_context_menu": dialog_functions._2FA_handle_context_menu,
+            "handle_copy": dialog_functions._2FA_context_copy,
+            "handle_select_all": dialog_functions._2FA_context_select_all,
+            "handle_double_click": dialog_functions._2FA_handle_double_click
+        }
+
+        # Create the dialog. This call is blocking due to `wait_window()`.
+        CustomDialog(
+            parent=parent,
+            title=f"2FA QR Code for {qr_window_data.filename}",
+            prompt=prompt,
+            callbacks=callbacks
+        )
+        
                 
 class DialogFunctions:
-    def __init__(self, root, parent):
+    def __init__(self, root, parent, from_gui=False):
         self.root = root
         self.parent = parent
-   
- 
+        self.from_gui = from_gui
+
     # address_info functions
     def set_key_visibility(self, widget=None, entry=None, first=False):
         #self.print_variable_values(entry)
@@ -1463,6 +1538,114 @@ class DialogFunctions:
         label.tag_bind(hyperlink_tag, "<Enter>", self.root.gui_utils.on_link_enter)
         label.tag_bind(hyperlink_tag, "<Leave>", self.root.gui_utils.on_link_leave)
         label.tag_bind(hyperlink_tag, "<Button-1>", lambda e, url=hyperlink_url: self.root.gui_utils.open_link(url))
+    
+    #2FA Dialog functions
+    def _2FA_initial_setup(self, dialog_instance, first=None):
+        if self.root.is_closing: return
+
+        self.root.dialog_instance = dialog_instance
+        refs = self.root.dialog_instance.widget_references
+        secret_entry = refs.get('secret_entry')
+
+        self.root.context_menu = tk.Menu(self.root.dialog_instance.dialog, tearoff=0)
+        self.root.context_menu.add_command(label="Copy", command=self._2FA_context_copy)
+        self.root.context_menu.add_command(label="Select All", command=self._2FA_context_select_all)
+
+        secret_entry.config(takefocus=0)
+        secret_entry.config(state='normal')
+        secret_entry.insert(0, " " * len(self.root.totp_secret))
+        secret_entry.config(state='readonly')
+
+        qr_width = 300
+        resized_image = self.root.qr_img.resize((qr_width, qr_width), Image.Resampling.LANCZOS)
+        self.root.tk_image = ImageTk.PhotoImage(resized_image)
+        refs['qr_label'].config(image=self.root.tk_image)
+        
+        self.root.dialog_instance.cancel = self._2FA_on_close
+        self._2FA_update_timer()
+
+    def _2FA_update_timer(self):
+        if self.root.is_closing: return
+        if self.root.close_window: self._2FA_on_close(); return
+        
+        if self.root.countdown > 0:
+            try:
+                if self.root.dialog_instance and self.root.dialog_instance.dialog.winfo_exists():
+                    countdown_label = self.root.dialog_instance.widget_references.get('countdown_label')
+                    if countdown_label: countdown_label.config(text=f"Closing in: {self.root.countdown}s")
+                    self.root.countdown -= 1
+                    self.root._timer_id = self.root.dialog_instance.dialog.after(1000, self._2FA_update_timer)
+            except tk.TclError:
+                self.root.is_closing = True
+                return
+        else:
+            self._2FA_on_close()
+
+    def _2FA_handle_click(self):
+        if self.root.is_closing: return
+        self.root.reveal_secret = not self.root.reveal_secret
+        refs = self.root.dialog_instance.widget_references
+        secret_entry, reveal_btn = refs.get('secret_entry'), refs.get('reveal_button')
+        
+        secret_entry.config(state='normal')
+        secret_entry.delete(0, 'end')
+        if self.root.reveal_secret:
+            secret_entry.insert(0, self.root.totp_secret)
+            reveal_btn.config(text="Hide 2FA Token")
+            secret_entry.config(takefocus=1)
+        else:
+            secret_entry.insert(0, " " * len(self.root.totp_secret))
+            reveal_btn.config(text="Reveal 2FA Token")
+            secret_entry.config(takefocus=0)
+            secret_entry.select_clear()
+            self._2FA_hide_context_menu()
+        secret_entry.config(state='readonly')
+
+    def _2FA_handle_double_click(self, event):
+        if not self.root.reveal_secret:
+            return "break"
+
+    def _2FA_handle_context_menu(self, event):
+        if self.root.is_closing: return
+        if not self.root.reveal_secret: return "break"
+        if not self.from_gui:
+            try: 
+                self.root.context_menu.post(event.x_root, event.y_root)
+            except tk.TclError:
+                pass
+
+    def _2FA_hide_context_menu(self):
+        if self.root.is_closing: return
+        try: self.root.context_menu.unpost()
+        except tk.TclError: pass
+
+    def _2FA_context_copy(self, event=None):
+        if self.root.is_closing or not self.root.reveal_secret: return "break"
+        secret_entry = self.root.dialog_instance.widget_references.get('secret_entry')
+        if secret_entry: secret_entry.event_generate("<<Copy>>")
+
+    def _2FA_context_select_all(self, event=None):
+        if self.root.is_closing or not self.root.reveal_secret: return "break"
+        secret_entry = self.root.dialog_instance.widget_references.get('secret_entry')
+        if secret_entry:
+            secret_entry.focus_set()
+            secret_entry.select_range(0, 'end')
+        return "break"
+
+    def _2FA_on_close(self, event=None):
+        if self.root.is_closing: return
+        self.root.is_closing = True
+        try:
+            if self.root.dialog_instance and self.root.dialog_instance.dialog.winfo_exists():
+                if self.root._timer_id:
+                    self.root.dialog_instance.dialog.after_cancel(self.root._timer_id)
+                    self.root._timer_id = None
+                self.root.dialog_instance.close_dialog()
+        except tk.TclError: pass
+        
+        self.root.data_manipulation_util.secure_delete([
+            self.root.qr_img, self.root.totp_secret, self.root.tk_image
+        ])
 
 class KeyToggle:
     def __init__(self, base_class, master=None, **kwargs):

@@ -18,11 +18,26 @@ class CustomDialog:
         self.callbacks = callbacks
         self.custom_args = kwargs
         self.classes = classes
-        self.dialog = tk.Toplevel(parent)
+                # Handle the case where there is no parent window.
+        self._is_root_temp = False
+        if parent is None:
+            # Create a temporary, hidden root window.
+            self.root = tk.Tk()
+            self.root.withdraw()
+            dialog_parent = self.root
+            self._is_root_temp = True
+        else:
+            dialog_parent = parent
+
+        self.dialog = tk.Toplevel(dialog_parent)
         self.dialog.title(title)
         
         self.styles = tb.Style()
-        self.dialog.transient(parent)  # Make the dialog a transient window of the parent
+        
+        # Only set transient if a real parent exists.
+        if parent:
+            self.dialog.transient(parent)
+
 
         # Position the dialog window relative to the parent window
         self.center_dialog(parent)
@@ -98,6 +113,8 @@ class CustomDialog:
                 if widget_type != 'label':
                     widget.config(command=command)
 
+            
+
             # Handle widget binds
             if 'binds' in item:
                 for bind in item['binds']:
@@ -125,7 +142,10 @@ class CustomDialog:
         self.selectable_widgets.extend(self.identify_selectable_widgets(self.dialog))
         self.result = None
         self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
-        self.dialog.transient(parent)  # Make the dialog a transient window of the parent
+        
+        if parent:
+            self.dialog.transient(parent)
+
         try:
             self.dialog.grab_set()  # Modal dialog
         except tk.TclError:
@@ -135,19 +155,47 @@ class CustomDialog:
     
 
     def center_dialog(self, parent):
-        """Center the dialog relative to the parent window."""
-        self.dialog.update_idletasks()  # Ensure accurate width/height values
-        x = parent.winfo_x() + parent.winfo_width() // 2 - self.dialog.winfo_width() // 2
-        y = parent.winfo_y() + parent.winfo_height() // 2 - self.dialog.winfo_height() // 2
+        """Center the dialog. If a parent is provided, center relative to it.
+           Otherwise, center on the screen."""
+        self.dialog.update_idletasks()  # Ensure accurate width/height
+        dialog_width = self.dialog.winfo_width()
+        dialog_height = self.dialog.winfo_height()
+
+        if parent:
+            # Center relative to the parent window
+            parent_x = parent.winfo_x()
+            parent_y = parent.winfo_y()
+            parent_width = parent.winfo_width()
+            parent_height = parent.winfo_height()
+            x = parent_x + (parent_width // 2) - (dialog_width // 2)
+            y = parent_y + (parent_height // 2) - (dialog_height // 2)
+        else:
+            # Center on the screen
+            screen_width = self.dialog.winfo_screenwidth()
+            screen_height = self.dialog.winfo_screenheight()
+            x = (screen_width // 2) - (dialog_width // 2)
+            y = (screen_height // 2) - (dialog_height // 2)
+        
         self.dialog.geometry(f"+{x}+{y}")
 
     def validate_center(self, parent):
         """Check if the dialog is centered; if not, re-center."""
-        self.dialog.update_idletasks()  # Ensure accurate width/height values
+        self.dialog.update_idletasks()
         current_x, current_y = self.dialog.winfo_x(), self.dialog.winfo_y()
-        expected_x = parent.winfo_x() + parent.winfo_width() // 2 - self.dialog.winfo_width() // 2
-        expected_y = parent.winfo_y() + parent.winfo_height() // 2 - self.dialog.winfo_height() // 2
-        if (current_x, current_y) != (expected_x, expected_y):
+        dialog_width = self.dialog.winfo_width()
+        dialog_height = self.dialog.winfo_height()
+        
+        if parent:
+            expected_x = parent.winfo_x() + parent.winfo_width() // 2 - dialog_width // 2
+            expected_y = parent.winfo_y() + parent.winfo_height() // 2 - dialog_height // 2
+        else:
+            screen_width = self.dialog.winfo_screenwidth()
+            screen_height = self.dialog.winfo_screenheight()
+            expected_x = (screen_width // 2) - (dialog_width // 2)
+            expected_y = (screen_height // 2) - (dialog_height // 2)
+
+        # Allow for a small tolerance (e.g., 1 pixel)
+        if abs(current_x - expected_x) > 1 or abs(current_y - expected_y) > 1:
             self.dialog.geometry(f"+{expected_x}+{expected_y}")
 
     def create_widget(self, widget_type, widget_parent, row, grid_config, pack_config, item, item_index, widget_id):
@@ -429,6 +477,13 @@ class CustomDialog:
     
         return None
         
+    
+
+    def close_dialog(self):
+        """Private method to handle closing the dialog and the temporary root if it exists."""
+        self.dialog.destroy()
+        if self._is_root_temp:
+            self.root.destroy()
 
     def submit_entry(self, event=None):
         checkbox_values = tuple(sv.get() for sv in self.checkbox_variables.values())
@@ -439,14 +494,20 @@ class CustomDialog:
             self.result = [True], checkbox_values, radio_values
         else:
             self.result = entry_values, checkbox_values, radio_values
-        self.dialog.destroy()
+        
+        self.close_dialog()
+        
+        #self.dialog.destroy()
 
 
     def cancel(self, event=None):
         checkbox_values = tuple(sv.get() for sv in self.checkbox_variables.values())
         radio_values = tuple(sv.get() for sv in self.radio_variables.values())
         self.result = [None], checkbox_values, radio_values
-        self.dialog.destroy()
+        
+        self.close_dialog()
+
+        #self.dialog.destroy()
     
 
     def identify_selectable_widgets(self, container):

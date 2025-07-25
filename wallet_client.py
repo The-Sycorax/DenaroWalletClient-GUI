@@ -30,7 +30,8 @@ from denaro.wallet.utils.wallet_generation_util import generate, generate_from_p
 from denaro.wallet.utils.cryptographic_util import EncryptDecryptUtils, TOTP
 from denaro.wallet.utils.verification_util import Verification
 from denaro.wallet.utils.data_manipulation_util import DataManipulation
-from denaro.wallet.utils.interface_util import QRCodeUtils, UserPrompts
+from denaro.wallet.utils.interface_util import UserPrompts
+from denaro.wallet.utils.qr_code_util import QRCodeUtils, _2FA_QR_Dialog
 from denaro.wallet.utils.transaction_utils.transaction_input import TransactionInput
 from denaro.wallet.utils.transaction_utils.transaction_output import TransactionOutput
 from denaro.wallet.utils.transaction_utils.transaction import Transaction
@@ -288,9 +289,23 @@ def handle_new_encrypted_wallet(password, totp_code, use2FA, filename, determini
         totp_qr_data = f'otpauth://totp/{filename}?secret={totp_secret}&issuer=Denaro Wallet Client'
         # Generate a QR code for the TOTP secret
         qr_img = QRCodeUtils.generate_qr_with_logo(totp_qr_data, "./denaro/gui_assets/denaro_logo.png")
+        
+        qr_window_controller = _2FA_QR_Dialog(
+            qr_img,
+            filename,
+            totp_secret,
+            from_gui=from_gui,
+            callback_object=callback_object
+        )
+
+        # If called from the GUI, now pass the controller object to the GUI thread.
+        # The GUI will then take over management of this object.
+        if from_gui and callback_object:
+            callback_object.post_2FA_QR_dialog(qr_window_controller)
+
         # Threading is used to show the QR window to the user while allowing input in the temrinal
-        thread = threading.Thread(target=QRCodeUtils.show_qr_with_timer, args=(qr_img, filename, totp_secret,))
-        thread.start()
+        #thread = threading.Thread(target=QRCodeUtils.show_qr_with_timer, args=(qr_img, filename, totp_secret,))
+        #thread.start()
 
         # Encrypt the TOTP secret for storage
         encrypted_totp_secret = EncryptDecryptUtils.encrypt_data(totp_secret, password, "", hmac_salt, verification_salt, verifier)
@@ -298,12 +313,16 @@ def handle_new_encrypted_wallet(password, totp_code, use2FA, filename, determini
         
         # Validate the TOTP setup
         if not UserPrompts.handle_2fa_validation(totp_secret, totp_code, from_gui=from_gui, callback_object=callback_object):
-            QRCodeUtils.close_qr_window(True)
+            
+            #QRCodeUtils.close_qr_window(True)
+            qr_window_controller.close_window = True
+            
             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             return None, None, None, None, None
         else:
-            QRCodeUtils.close_qr_window(True)
-            thread.join()
+            #QRCodeUtils.close_qr_window(True)
+            #thread.join()
+            qr_window_controller.close_window = True
     else:
         # If 2FA is not used, generate a predictable TOTP secret based on the verification salt.
         totp_secret = TOTP.generate_totp_secret(True,verification_salt)
@@ -384,7 +403,7 @@ def handle_existing_encrypted_wallet(filename, data, password, totp_code, determ
                     msg_ext = new_line+'To prevent unauthorized access, the wallet session has been closed.'
                 callback_object.root.stored_data.wallet_deleted = True 
 
-            callback_object.show_messagebox("Error", f"{gui_error_msg}{msg_ext}")
+            callback_object.post_messagebox("Error", f"{gui_error_msg}{msg_ext}")
 
                      
 
@@ -602,7 +621,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
 
         if len(data["wallet_data"]["entry_data"]["entries"]) + imported_entries > 255 and not new_wallet:
             if from_gui:
-                callback_object.show_messagebox("Error", "Cannot proceed. Maximum wallet entries reached.")
+                callback_object.post_messagebox("Error", "Cannot proceed. Maximum wallet entries reached.")
             else:
                 print("Cannot proceed. Maximum wallet entries reached.")
             return None
@@ -722,7 +741,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
                             wallet_data.append(generated_data)
                         if index + len(wallet_data) >= 256:
                             if from_gui:
-                                callback_object.show_messagebox("Error", "Maximum wallet entries reached.")
+                                callback_object.post_messagebox("Error", "Maximum wallet entries reached.")
                             else:
                                 print("Maximum wallet entries reached.\n")
                             break
@@ -738,7 +757,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
                     if first_child_data["private_key"] != data["wallet_data"]["entry_data"]["entries"][0]["private_key"]:
                         if not wallet_version == "0.2.3":
                             if from_gui:
-                                callback_object.show_messagebox("Error", "Invalid password. Please try again.")
+                                callback_object.post_messagebox("Error", "Invalid password. Please try again.")
                             else:
                             # Log an error message if the private keys do not match, indicating that the provided passphrase is incorrect.
                                 logging.error("Invalid password. To generate the address, please re-enter the correct password and try again.")
@@ -757,7 +776,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
                                 wallet_data.append(generated_data)
                             if index + len(wallet_data) >= 256:
                                 if from_gui:
-                                    callback_object.show_messagebox("Error", "Maximum wallet entries reached.")
+                                    callback_object.post_messagebox("Error", "Maximum wallet entries reached.")
                                 else:
                                     print("Maximum wallet entries reached.\n")
                                 
@@ -782,7 +801,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
                     if len(data["wallet_data"]["entry_data"]["entries"]) + len(wallet_data) >= 256:
                         
                         if from_gui:
-                            callback_object.show_messagebox("Error", "Maximum wallet entries reached.")
+                            callback_object.post_messagebox("Error", "Maximum wallet entries reached.")
                         else:
                             print("Maximum wallet entries reached.\n")
                         break
@@ -822,7 +841,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
             # Return None if amount of wallet entries are 256 or more
             if len(data["wallet_data"]["entry_data"]["entries"]) >= 256:
                 if from_gui:
-                    callback_object.show_messagebox("Error", "Maximum wallet entries reached.")
+                    callback_object.post_messagebox("Error", "Maximum wallet entries reached.")
                 else:
                     logging.error("Maximum wallet entries reached.\n")
                 DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -832,7 +851,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
             private_key_pattern = r'^(0x)?[0-9a-fA-F]{64}$'
             if not re.match(private_key_pattern, private_key):
                 if from_gui:
-                    callback_object.show_messagebox("Error", "The provided private key is not valid.")
+                    callback_object.post_messagebox("Error", "The provided private key is not valid.")
                 else:
                     logging.error("The provided private key is not valid.")
                 DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -2683,7 +2702,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\r  ")
         print("\rProcess terminated by user.")
-        QRCodeUtils.close_qr_window(True)
+        QRCodeUtils.close_window = True
         exit_code = 1
     #except Exception as e:
     #    logging.error(f"{e}")

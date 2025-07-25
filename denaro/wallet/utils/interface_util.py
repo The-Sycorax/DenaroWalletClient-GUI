@@ -1,4 +1,3 @@
-import qrcode
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
@@ -15,10 +14,7 @@ import base64
 import data_manipulation_util
 import verification_util
 
-from PIL import Image, ImageDraw
-from qrcode.image.styledpil import StyledPilImage
-from qrcode.image.styles.moduledrawers import CircleModuleDrawer
-from qrcode.image.styles.colormasks import SolidFillColorMask
+
 
 close_qr_window = False
 
@@ -30,100 +26,7 @@ else:
     import termios, fcntl
 
 # QRCode utility class
-class QRCodeUtils:  
 
-    @staticmethod
-    def generate_qr_with_logo(data, logo_path):
-        """
-        Overview: 
-        Generates a custom QR code of the TOTP secret token with Denaro's logo in the center.
-        The generated QR code is meant to be scanned by a Authenticator app. 
-
-        Arguments:
-        - data (str): The data to encode in the QR code.
-        - logo_path (str): The path to the logo image file.
-        
-        Returns:
-        - PIL.Image: The generated QR code image.
-        """
-        # Initialize QR Code with high error correction
-        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H)  
-        qr.add_data(data)  
-        
-        # Create a styled QR code image
-        qr_img = qr.make_image(
-            image_factory=StyledPilImage,
-            module_drawer=CircleModuleDrawer(radius_ratio=1.5),
-            color_mask=SolidFillColorMask(back_color=(255, 255, 255))
-        )  
-        
-        # Define color palette for gradient
-        palette = [(51, 76, 154), (51, 76, 154), (14, 117, 165),
-                   (83, 134, 162), (83, 134, 162), (14, 117, 165), (51, 76, 154), (51, 76, 154)]
-        
-        # Apply gradient based on the color pallette
-        gradient_img = Image.new("RGB", qr_img.size, (255, 255, 255))  
-        gradient_img = QRCodeUtils.generate_qr_gradient(gradient_img, palette)  
-        
-        # Create a mask for the gradient
-        mask = qr_img.convert("L")  
-        threshold = 200  
-        mask = mask.point(lambda p: p < threshold and 255)  
-        
-        # Apply gradient to the QR code
-        qr_img = Image.composite(gradient_img, qr_img, mask)  
-        
-        # Load, resize and place the logo
-        logo_img = Image.open(logo_path)
-        basewidth = min(qr_img.size[0] // 4, logo_img.size[0])  
-        wpercent = (basewidth / float(logo_img.size[0]))  
-        hsize = int((float(logo_img.size[1]) * float(wpercent)))  
-        logo_img = logo_img.resize((basewidth, hsize))  
-        
-        # Calculate logo position
-        logo_pos = ((qr_img.size[0] - logo_img.size[0]) //
-                    2, (qr_img.size[1] - logo_img.size[1]) // 2)  
-        
-        # Paste the logo onto the QR code
-        qr_img.paste(logo_img, logo_pos, logo_img)  
-        
-        # Return the final QR code image with the logo
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not qr_img])
-        return qr_img  
-
-    @staticmethod
-    def generate_qr_gradient(image, palette):
-        """
-        Overview: Generates a gradient image based on a color palette.
-
-        Arguments:
-        - image (PIL.Image): The image to apply the gradient on.
-        - palette (list): List of RGB tuples for the gradient.
-        
-        Returns:
-        - PIL.Image: The image with gradient applied.
-        """
-        # Initialize the drawing object
-        draw = ImageDraw.Draw(image)  
-        
-        # Get image dimensions
-        width, height = image.size  
-        
-        # Calculate the last index of the palette
-        max_index = len(palette) - 1  
-        
-        # Draw the gradient line by line
-        for x in range(width):  
-            blended_color = [
-                int((palette[min(int(x / width * max_index), max_index - 1)][i] * (1 - (x / width * max_index - int(x / width * max_index))) +
-                     palette[min(int(x / width * max_index) + 1, max_index)][i] * (x / width * max_index - int(x / width * max_index))))
-                for i in range(3)
-            ]
-            draw.line([(x, 0), (x, height)], tuple(blended_color))  
-        
-        # Return the image with gradient applied
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not image])
-        return image  
 
     @staticmethod
     def show_qr_with_timer(qr_image, filename, totp_secret):
@@ -505,14 +408,14 @@ class UserPrompts:
                 # Create the backup
                 shutil.copy(filename, backup_path)
                 if from_gui:
-                    callback_object.show_messagebox("Info", f"Backup created at {backup_path}")
+                    callback_object.post_messagebox("Info", f"Backup created at {backup_path}")
                 print(f"Backup created at {backup_path}\n")
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                 return True
 
             except Exception as e:
                 if from_gui:
-                    callback_object.show_messagebox("Error", f"Could not create backup. Please see console log.")
+                    callback_object.post_messagebox("Error", f"Could not create backup. Please see console log.")
                 logging.error(f" Could not create backup: {e}\n")
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                 return
@@ -615,7 +518,7 @@ class UserPrompts:
                             # Overwrite wallet with empty data
                             data_manipulation_util.DataManipulation.delete_wallet(filename, data, from_gui=from_gui, callback_object=callback_object)
                             if from_gui:
-                                callback_object.show_messagebox("Info", "Wallet data has been erased.")
+                                callback_object.post_messagebox("Info", "Wallet data has been erased.")
                                 if callback_object.root.progress_bar["value"] != 0:
                                     callback_object.root.progress_bar.config(maximum=0, value=0)
                             else:
@@ -653,7 +556,7 @@ class UserPrompts:
         if from_gui:
             print()
             gui_error_msg = f"{attempts_msg+new_line if attempts_msg else ''}{'WARNING: ' if warning_type == '1' else ''}{'CRITICAL: ' if warning_type == '2' else ''}{warning_msg+new_line if warning_msg else ''}{data_erased_msg+new_line if data_erased_msg else ''}{auth_error_msg}"
-            callback_object.show_messagebox("Error", gui_error_msg)
+            callback_object.post_messagebox("Error", gui_error_msg)
 
     @staticmethod
     def handle_2fa_validation(data, totp_code=None, from_gui=False, callback_object=None):
@@ -676,8 +579,8 @@ class UserPrompts:
                 # Get TOTP code from user input
                 if not from_gui:
                     totp_code = input("Please enter the Two-Factor Authentication code from your authenticator app (or type '/q' to exit the script): ")
-                else:
-                    totp_code = callback_object.post_ask_string("2FA Required","Two-Factor Authentication is required to decrypt this wallet.\nPlease enter the 6-digit Two-Factor Authentication code from your authenticator app:")
+                else:                    
+                    totp_code = callback_object.post_ask_string("2FA Required","Two-Factor Authentication is required.\nPlease enter the 6-digit Two-Factor Authentication code from your authenticator app:")
                     if totp_code == None:
                         return False
                 # Exit if the user chooses to quit
@@ -689,7 +592,7 @@ class UserPrompts:
                 if not totp_code:
                     logging.error("No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.\n")
                     if from_gui:
-                        callback_object.show_messagebox("Error", "No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.")
+                        callback_object.post_messagebox("Error", "No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.")
                     continue
                 # Validate that the TOTP code is a 6-digit integer
                 try:
@@ -697,13 +600,13 @@ class UserPrompts:
                     if len(totp_code) != 6:
                         logging.error("Two-Factor Authentication code should contain 6 digits. Please try again.\n")
                         if from_gui:
-                            callback_object.show_messagebox("Error", "Two-Factor Authentication code should contain 6 digits. Please try again.")
+                            callback_object.post_messagebox("Error", "Two-Factor Authentication code should contain 6 digits. Please try again.")
                         totp_code = None
                         continue
                 except ValueError:
                     logging.error("Two-Factor Authentication code should be an integer. Please try again.\n")
                     if from_gui:
-                        callback_object.show_messagebox("Error", "Two-Factor Authentication code should be an integer. Please try again.")
+                        callback_object.post_messagebox("Error", "Two-Factor Authentication code should be an integer. Please try again.")
                     totp_code = None
                     continue
             # Validate the TOTP code using utility method
@@ -714,7 +617,6 @@ class UserPrompts:
             else:
                 logging.error("Authentication failed. Please try again.\n")
                 if from_gui:
-                    callback_object.show_messagebox("Error", "Authentication failed. Please try again.")
-                # Reset TOTP code and continue the loop
+                    callback_object.post_messagebox("Error", "Authentication failed. Please try again.")
                 totp_code = None
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])

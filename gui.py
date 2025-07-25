@@ -10,10 +10,6 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from PIL import ImageTk, Image
 
-import threading
-import continuous_threading # type: ignore
-
-import queue
 import atexit
 
 import time
@@ -38,6 +34,7 @@ from denaro.wallet.utils.tkinter_utils.custom_auto_complete_combobox import Auto
 from denaro.wallet.utils.tkinter_utils.custom_dialog import CustomDialog
 from denaro.wallet.utils.tkinter_utils.dialogs import Dialogs
 from denaro.wallet.utils.tkinter_utils.custom_popup import CustomPopup
+from denaro.wallet.utils.thread_manager import WalletThreadManager
 
 class BasePage(ttk.Frame):
     def __init__(self, parent, root, *args, **kwargs):
@@ -516,7 +513,6 @@ class SettingsPage(BasePage):
         node = f"{address}:{port}" if port else address
         node_validation_enabled = self.disable_node_validation_var.get()
 
-        # Assuming wallet_client.Verification.validate_node_address exists and handles address with optional port
         _ , node_str, string_valid, return_msg = wallet_client.Verification.validate_node_address([node, False], from_gui=True, check_connection=check_connection, referer="validate_node_fields")
         
         if return_msg != "":
@@ -1796,92 +1792,7 @@ class GUIUtils:
             return
         
 
-class WalletThreadManager:
-    def __init__(self, root):
-        self.root = root
-        self.threads = {}
-        self.thread_stop_signals = {}
-        self.thread_result = {}
-        self.lock = threading.RLock()  # Use RLock to avoid deadlock with re-entrant locking
-        self.request_queue = queue.Queue()        
-        self.dialog_event = threading.Event()
-        self.process_requests()
 
-
-    def start_thread(self, name, target, args=(), periodic=[False]):
-        # No need to acquire lock here since stop_thread and this block manage locking internally
-        self.stop_thread(name)  # Ensure the existing thread is stopped before starting a new one
-        if periodic[0] == True:
-            stop_signal = continuous_threading.Event()
-        else:
-            stop_signal = threading.Event()
-        with self.lock:
-            self.thread_stop_signals[name] = stop_signal
-
-        def wrapped_target(stop_signal, *args, **kwargs):
-            try:
-                target(stop_signal, *args, **kwargs)
-            #except Exception as e:
-            #    print(f"Error in thread target function: {e}")
-            finally:
-                with self.lock:
-                    self.threads.pop(name, None)
-                    self.thread_stop_signals.pop(name, None)
-
-        prepared_args = (stop_signal,) + args
-        if periodic[0] == True:
-            thread = continuous_threading.PeriodicThread(periodic[1], target=wrapped_target, args=prepared_args)
-        else:
-            thread = threading.Thread(target=wrapped_target, args=prepared_args)
-        thread.daemon = True
-
-        with self.lock:
-            self.threads[name] = thread
-
-        thread.start()
-        #print(f"Thread {name} started.")
-
-
-    def stop_thread(self, name):
-        with self.lock:
-            if name in self.thread_stop_signals:
-                #print(f"Sending stop signal to thread {name}.")
-                self.thread_stop_signals[name].set()
-
-            thread_to_join = self.threads.get(name)
-        
-        if thread_to_join:
-            thread_to_join.join(timeout=2)
-
-                
-            with self.lock:
-                self.threads.pop(name, None)
-                self.thread_stop_signals.pop(name, None)
-            #print(f"Thread {name} has been stopped.")
-        #else:
-            #print(f"No active thread named '{name}' to stop.")
-    
-
-    def stop_all_threads(self):
-        continuous_threading.shutdown(0)
-        with self.lock:            
-            for name in list(self.threads.keys()):
-                self.stop_thread(name)
-
-
-    def stop_specific_threads(self, names=[]):
-        with self.lock:
-            for name in names:
-                if name in self.root.event_handler.thread_event:
-                    self.stop_thread(name)
-
-
-    def process_requests(self):
-        while not self.request_queue.empty():
-            request = self.request_queue.get()
-            request()  
-        #print(self.threads)
-        self.root.after(100, self.process_requests)
 
 
 class WalletOperations:
@@ -2065,21 +1976,7 @@ class WalletOperations:
         
         if 'load_wallet' not in self.root.event_handler.thread_event:
             self.root.wallet_thread_manager.start_thread("load_wallet", self.get_wallet_data, args=(self.root.stored_data.wallet_file, self.send_transaction), )
-    
-
-    def tx_confirmation(self, sender=None, receiver=None, amount=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_string_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.tx_confirmation_dialog(sender, receiver, amount, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_string_result
-        self.root.stored_data.ask_string_result = None
-        return result
-    
+        
 
     def send_transaction(self):
         if self.root.stored_data.wallet_authenticated:
@@ -2088,7 +1985,7 @@ class WalletOperations:
             amount = self.root.send_page.amount_entry.get()
             message = self.root.send_page.message_entry.get()
 
-            if self.root.stored_data.disable_tx_confirmation_dialog or self.tx_confirmation(sender=sender, receiver=receiver, amount=amount):
+            if self.root.stored_data.disable_tx_confirmation_dialog or self.root.callbacks.tx_confirmation(sender=sender, receiver=receiver, amount=amount):
                 for entry in self.root.stored_data.wallet_data["entry_data"]:
                     if entry != "master_mnemonic":
                         for entry_data in self.root.stored_data.wallet_data["entry_data"][entry]:
@@ -2100,10 +1997,9 @@ class WalletOperations:
                 node, _ , _ = self.root.settings_page.validate_node_fields()
                 transaction, msg_str = wallet_client.prepareTransaction(filename=None, password=None, totp_code=None, amount=amount, sender=sender, private_key=private_key, receiver=receiver, message=message, node=node, from_gui=True)
                 self.root.send_page.tx_log.config(state='normal')
-                # Your logic to prepare and send transaction, then update msg_str
         
                 if transaction:
-                    transaction_hash = sha256(transaction.hex())  # Assuming sha256() returns a string
+                    transaction_hash = sha256(transaction.hex())
                     hyperlink_url = f"http://explorer.denaro.is/transaction/{transaction_hash}"
                     hyperlink_text = f"Denaro Explorer link: {hyperlink_url}"
                     tx_str = (f'\nTransaction successfully pushed to node. \n'
@@ -2115,7 +2011,6 @@ class WalletOperations:
                 self.root.send_page.tx_log.insert(tk.END, f'\n{msg_str}\n')
         
                 if transaction:
-                    # Ensuring unique tag for each transaction hyperlink
                     hyperlink_tag = f"hyperlink-{transaction_hash}"
                     start = self.root.send_page.tx_log.search(hyperlink_url, "1.0", tk.END)
                     if start:
@@ -2157,7 +2052,7 @@ class WalletOperations:
         if deterministic:
             mnemonic = wallet_client.generate_mnemonic()
             if self.callbacks.post_backup_mnemonic_dialog(mnemonic=mnemonic) == False:
-                self.callbacks.show_messagebox(title="Info", msg="Operation canceled. Wallet has not been created.")
+                self.callbacks.post_messagebox(title="Info", msg="Operation canceled. Wallet has not been created.")
                 return
             
         result = wallet_client.generateAddressHelper(filename=filename, password=password, new_wallet=True, deterministic=deterministic, encrypt=encrypt, use2FA=use2FA, mnemonic=mnemonic, from_gui=True, callback_object=self.callbacks)
@@ -2257,55 +2152,9 @@ class WalletOperations:
 class Callbacks:
     def __init__(self, root):
         self.root = root
-    
 
-    def set_wallet_data(self, wallet_data, is_import=False, stop_signal=None):
-        # Wait if wallet_data_updated is True, indicating an ongoing GUI update
-        while getattr(self.root.stored_data, 'wallet_data_updated', False):
-            # Check for stop signal during wait to exit if needed
-            if stop_signal and stop_signal.is_set():
-                #print("Stop signal received while waiting. Exiting function.")
-                return False
-            time.sleep(0.1)  # Brief pause to wait for GUI update to complete
-        
-        # Check stop signal again before proceeding with data update
-        if stop_signal and stop_signal.is_set():
-            #print("Stop signal received. Exiting function.")
-            return False
-        try:
-            # Proceed with updating the wallet data based on the import flag
-            if is_import:
-                wallet_data.pop("is_import", None)  # Remove 'is_import' if present
-                self.root.stored_data.imported_entries.append(wallet_data)
-                # Update the stored wallet data for imported entries
-                self.root.stored_data.wallet_data["entry_data"]["imported_entries"] = self.root.stored_data.imported_entries
-            else:
-                self.root.stored_data.generated_entries.append(wallet_data)
-                # Update the stored wallet data for generated entries
-                self.root.stored_data.wallet_data["entry_data"]["entries"] = self.root.stored_data.generated_entries
     
-            # Extend formatted data with the new entry
-            self.root.stored_data.formatted_data.extend([(wallet_data["address"], "", "", "")])
-            # Temporarily store the new address for potential immediate use
-            self.root.stored_data.temporary_address = wallet_data["address"]
     
-            # Set the flag to True to indicate that new wallet data has been added
-            self.root.stored_data.wallet_data_updated = True
-    
-        except Exception as e:
-            #print(f"Error updating wallet data: {e}")
-            return False
-        return True
-    
-
-    def set_balance_data(self, balance_data, total_balance, total_value, stop_signal=None):
-        self.root.stored_data.balance_data = balance_data
-        self.root.stored_data.total_balance = total_balance
-        self.root.stored_data.total_balance_value = total_value
-        if balance_data:
-            self.root.wallet_operations.update_balance_data(balance_data, stop_signal=stop_signal)
-
-
     def post_ask_string(self, title, msg, show=None):
         # Reset the event and result
         self.root.wallet_thread_manager.dialog_event.clear()
@@ -2346,7 +2195,21 @@ class Callbacks:
         self.root.stored_data.ask_bool_result = None
         return result
     
-    def show_messagebox(self, title, msg):
+    def tx_confirmation(self, sender=None, receiver=None, amount=None):
+        # Reset the event and result
+        self.root.wallet_thread_manager.dialog_event.clear()
+        self.root.stored_data.ask_string_result = None
+        # Add the ask_string task to the queue
+        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.tx_confirmation_dialog(sender, receiver, amount, is_callback=True))
+        # Wait for the dialog to complete
+        self.root.wallet_thread_manager.dialog_event.wait()
+        # Return the result
+        result = self.root.stored_data.ask_string_result
+        self.root.stored_data.ask_string_result = None
+        return result
+    
+
+    def post_messagebox(self, title, msg):
         # Reset the event and result
         self.root.wallet_thread_manager.dialog_event.clear()
         self.root.stored_data.ask_bool_result = None
@@ -2359,6 +2222,7 @@ class Callbacks:
         self.root.stored_data.ask_bool_result = None
         return result
     
+
     def post_show_address_info(self, entry_data=None, entry_type=None):
         # Reset the event
         self.root.wallet_thread_manager.dialog_event.clear()
@@ -2409,6 +2273,66 @@ class Callbacks:
         self.root.stored_data.ask_bool_result = None
         return result
     
+
+    def post_2FA_QR_dialog(self, qr_window_data):
+        self.root.wallet_thread_manager.request_queue.put(
+            lambda: self.root.dialogs.show_2FA_QR_dialog(
+                qr_window_data=qr_window_data,
+                from_gui=True
+            )
+        )
+    
+    
+    def save_file_dialog(self, initialfile):
+        return filedialog.asksaveasfilename(filetypes=[("JSON files", "*.json")], initialfile=initialfile, initialdir='./wallets', confirmoverwrite=False)
+        
+    
+    def set_wallet_data(self, wallet_data, is_import=False, stop_signal=None):
+        # Wait if wallet_data_updated is True, indicating an ongoing GUI update
+        while getattr(self.root.stored_data, 'wallet_data_updated', False):
+            # Check for stop signal during wait to exit if needed
+            if stop_signal and stop_signal.is_set():
+                #print("Stop signal received while waiting. Exiting function.")
+                return False
+            time.sleep(0.1)  # Brief pause to wait for GUI update to complete
+        
+        # Check stop signal again before proceeding with data update
+        if stop_signal and stop_signal.is_set():
+            #print("Stop signal received. Exiting function.")
+            return False
+        try:
+            # Proceed with updating the wallet data based on the import flag
+            if is_import:
+                wallet_data.pop("is_import", None)  # Remove 'is_import' if present
+                self.root.stored_data.imported_entries.append(wallet_data)
+                # Update the stored wallet data for imported entries
+                self.root.stored_data.wallet_data["entry_data"]["imported_entries"] = self.root.stored_data.imported_entries
+            else:
+                self.root.stored_data.generated_entries.append(wallet_data)
+                # Update the stored wallet data for generated entries
+                self.root.stored_data.wallet_data["entry_data"]["entries"] = self.root.stored_data.generated_entries
+    
+            # Extend formatted data with the new entry
+            self.root.stored_data.formatted_data.extend([(wallet_data["address"], "", "", "")])
+            # Temporarily store the new address for potential immediate use
+            self.root.stored_data.temporary_address = wallet_data["address"]
+    
+            # Set the flag to True to indicate that new wallet data has been added
+            self.root.stored_data.wallet_data_updated = True
+    
+        except Exception as e:
+            #print(f"Error updating wallet data: {e}")
+            return False
+        return True
+    
+
+    def set_balance_data(self, balance_data, total_balance, total_value, stop_signal=None):
+        self.root.stored_data.balance_data = balance_data
+        self.root.stored_data.total_balance = total_balance
+        self.root.stored_data.total_balance_value = total_value
+        if balance_data:
+            self.root.wallet_operations.update_balance_data(balance_data, stop_signal=stop_signal)
+
 
     def configure_progress_bar(self, max_value):
         self.root.progress_bar.config(maximum=max_value*100)
@@ -2472,10 +2396,6 @@ class Callbacks:
             title_width = self.root.account_page.treeview_font.measure(base_name) + 20  # Extra space for padding
             self.root.account_page.column_min_widths[column] = title_width
         self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
-    
-
-    def save_file_dialog(self, initialfile):
-        return filedialog.asksaveasfilename(filetypes=[("JSON files", "*.json")], initialfile=initialfile, initialdir='./wallets', confirmoverwrite=False)
 
 
 @dataclass

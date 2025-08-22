@@ -295,13 +295,14 @@ def handle_new_encrypted_wallet(password, totp_code, use2FA, filename, determini
             filename,
             totp_secret,
             from_gui=from_gui,
-            callback_object=callback_object
+            callback_object=callback_object,
+            modal=False
         )
 
         # If called from the GUI, now pass the controller object to the GUI thread.
         # The GUI will then take over management of this object.
         if from_gui and callback_object:
-            callback_object.post_2FA_QR_dialog(qr_window_controller)
+            callback_object.post_2FA_QR_dialog(qr_window_controller, modal=False)
 
         # Threading is used to show the QR window to the user while allowing input in the temrinal
         #thread = threading.Thread(target=QRCodeUtils.show_qr_with_timer, args=(qr_img, filename, totp_secret,))
@@ -357,7 +358,7 @@ def handle_existing_encrypted_wallet(filename, data, password, totp_code, determ
     if not password:
         if from_gui:
             while not password:
-                password = callback_object.post_password_dialog("Authentication Required", "The wallet file is encrypted and authentication is required to proceed.\nPlease enter the password for the wallet.", show='*')
+                password = callback_object.post_password_dialog("Authentication Required", "The wallet file is encrypted and authentication is required to proceed.\nPlease enter the password for the wallet.")
                 if password is None:
                     # If the user cancels the prompt, securely delete variables and return None
                     DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -685,7 +686,7 @@ def generateAddressHelper(filename=None, password=None, totp_code=None, new_wall
             if not password and not new_wallet and not wallet_version == "0.2.3":
                 if from_gui:
                     while not password:
-                        password = callback_object.post_password_dialog("Password Required", "The wallet type is deterministic and a password is required to derive addresses.\nPlease enter the password for the wallet:", show='*')
+                        password = callback_object.post_password_dialog("Password Required", "The wallet type is deterministic and a password is required to derive addresses.\nPlease enter the password for the wallet:")
                         if password is None:
                             # If the user cancels the prompt, securely delete variables and return None
                             DataManipulation.secure_delete([var for var in locals().values() if var is not None])
@@ -1974,9 +1975,11 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
     
     # Push transaction to node
     try:
-        request = requests.post(f'{node}/push_tx', json={'tx_hex': transaction.hex()}, timeout=10)
-        request.raise_for_status()
-        response = request.json()
+        response, status_msg = push_transaction_with_fallback(node, transaction.hex())
+
+        #request = requests.post(f'{node}/push_tx', json={'tx_hex': transaction.hex()}, timeout=10)
+        #request.raise_for_status()
+        #response = request.json()
                 
         if not response.get('ok'):
             print(response.get('error'))
@@ -1984,6 +1987,7 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
             result = None, msg_str
             DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
             return result
+        
         result = transaction, msg_str
         DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
         return result
@@ -2012,6 +2016,59 @@ def create_transaction(private_key, sender, receiving_address, amount, message: 
         DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not result])
         return result
 
+
+def push_transaction_with_fallback(node_url: str, tx_hex: str) -> (dict, str):
+    """
+    Attempts to push a transaction to a node using the new /submit_transaction endpoint.
+    If that fails with a 404 (Not Found), it falls back to the legacy /push_tx endpoint.
+
+    Args:
+        node_url: The base URL of the node.
+        tx_hex: The hexadecimal representation of the transaction.
+
+    Returns:
+        A tuple containing the JSON response dictionary and a status message string.
+    """
+
+    # --- Attempt 1: Try the new, preferred endpoint ---
+    new_endpoint = f"{node_url}/submit_tx"
+    payload = {'tx_hex': tx_hex}
+    
+    try:
+        print(f"Attempting to submit transaction to modern endpoint: {new_endpoint}")
+        response = requests.post(new_endpoint, json=payload, timeout=10)
+        
+        # If the endpoint doesn't exist on a legacy node, it will return 404
+        if response.status_code == 404:
+            print("Modern endpoint not found, falling back to legacy /push_tx...")
+            # Go to the fallback logic
+            pass
+        else:
+            # For any other status code (200 OK, 403 Forbidden, 500 Error, etc.),
+            # we consider this the final response.
+            response.raise_for_status() # Raise an exception for non-2xx status codes
+            return response.json(), f"Successfully submitted transaction to {new_endpoint}"
+
+    except requests.exceptions.RequestException as e:
+        # This catches connection errors, timeouts, and non-404 HTTP errors
+        error_msg = f"Error during request to modern endpoint {new_endpoint}: {e}"
+        print(f"\n[{datetime.now()}]\n{error_msg}")
+        return None, error_msg
+
+    # --- Attempt 2: Fallback to the legacy endpoint ---
+    legacy_endpoint = f"{node_url}/push_tx"
+    
+    try:
+        print(f"Attempting to submit transaction to legacy endpoint: {legacy_endpoint}")
+        response = requests.post(legacy_endpoint, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json(), f"Successfully submitted transaction to {legacy_endpoint}"
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Error during request to legacy endpoint {legacy_endpoint}: {e}"
+        print(f"\n[{datetime.now()}]\n{error_msg}")
+        return None, error_msg
+    
 def get_address_info(address: str, node: str):
     try:
         # Send the request to the node

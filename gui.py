@@ -74,7 +74,7 @@ class AccountPage(BasePage):
         # Balance and value labels
         self.denaro_price_text.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
         self.total_balance_text.grid(row=1, column=1, sticky='nw', padx=5,)
-        self.total_value_text.grid(row=1, column=1, sticky='sw', padx=5, pady=(0, 5))  # Ensuring it stays in the same cell
+        self.total_value_text.grid(row=1, column=1, sticky='sw', padx=5, pady=(0, 5))
 
         # Accounts frame
         self.accounts_frame.grid_columnconfigure(0, weight=1)
@@ -1651,9 +1651,20 @@ class GUIUtils:
     
 
     def open_link(self, url, show_link=False):
-        """Ask for user consent before opening a URL in the web browser."""
-        if self.root.dialogs.confirmation_prompt(title="Open Link", msg="Do you want to open this link in your browser?", msg_2=url if show_link else None, is_callback=False):
-            webbrowser.open_new(url)
+        """
+        Asks for user consent asynchronously before opening a URL.
+        """
+        def on_user_consent(was_confirmed):
+            if was_confirmed:
+                webbrowser.open_new(url)
+        
+        # Call the universal dialog method in async/callback mode directly from the GUI thread.
+        self.root.dialogs.confirmation_prompt(
+            title="Open Link",
+            msg="Do you want to open this link in your browser?",
+            msg_2=url if show_link else None,
+            on_complete=on_user_consent
+        )
 
 
     def on_link_enter(self, event):
@@ -1985,7 +1996,7 @@ class WalletOperations:
             amount = self.root.send_page.amount_entry.get()
             message = self.root.send_page.message_entry.get()
 
-            if self.root.stored_data.disable_tx_confirmation_dialog or self.root.callbacks.tx_confirmation(sender=sender, receiver=receiver, amount=amount):
+            if self.root.stored_data.disable_tx_confirmation_dialog or self.callbacks.post_tx_confirmation(sender=sender, receiver=receiver, amount=amount):
                 for entry in self.root.stored_data.wallet_data["entry_data"]:
                     if entry != "master_mnemonic":
                         for entry_data in self.root.stored_data.wallet_data["entry_data"][entry]:
@@ -2138,7 +2149,7 @@ class WalletOperations:
         
         if result[0]:
             if self.callbacks.post_confirmation_prompt("Info", msg="An address has been successfully generated and added to the wallet file.\nWould you like to display address information?"):
-                self.callbacks.post_show_address_info(entry_data=result[1], entry_type='entries')
+                self.callbacks.post_show_address_info(entry_data=result[1], entry_type='entries', wait=True)
                 
             if self.callbacks.post_confirmation_prompt(title="Wallet Reload Required", msg="The wallet file must be reloaded to reflect the new changes.\nWould you like to reload it now?"):
                 if self.root.stored_data.operation_mode != 'send':
@@ -2152,134 +2163,101 @@ class WalletOperations:
 class Callbacks:
     def __init__(self, root):
         self.root = root
+       
+    def post_ask_string(self, title, msg, show=None, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.ask_string(
+            title, msg, show, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
 
-    
-    
-    def post_ask_string(self, title, msg, show=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_string_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.ask_string(title, msg, show, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_string_result
-        self.root.stored_data.ask_string_result = None
-        return result
-    
-    def post_password_dialog(self, title, msg, show=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_string_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.password_dialog(title, msg, show, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_string_result
-        self.root.stored_data.ask_string_result = None
-        return result
-    
 
-    def post_confirmation_prompt(self, title, msg):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_bool_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.confirmation_prompt(title, msg, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_bool_result
-        self.root.stored_data.ask_bool_result = None
-        return result
-    
-    def tx_confirmation(self, sender=None, receiver=None, amount=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_string_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.tx_confirmation_dialog(sender, receiver, amount, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_string_result
-        self.root.stored_data.ask_string_result = None
-        return result
-    
+    def post_confirmation_prompt(self, title, msg, msg_2=None, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.confirmation_prompt(
+            title, msg, msg_2, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
 
-    def post_messagebox(self, title, msg):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_bool_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.messagebox(title, msg, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_bool_result
-        self.root.stored_data.ask_bool_result = None
-        return result
-    
 
-    def post_show_address_info(self, entry_data=None, entry_type=None):
-        # Reset the event
-        self.root.wallet_thread_manager.dialog_event.clear()
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.address_info(entry_data=entry_data, entry_type=entry_type))
-        # Wait for the dialog to complete
-        #self.root.wallet_thread_manager.dialog_event.wait()
-    
-    
-    def post_password_dialog_with_confirmation(self, title=None, msg=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_string_result = None
-        # Add the password_dialog_with_confirmation task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.password_dialog_with_confirmation(title=title, msg=msg, is_callback=True))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_string_result
-        self.root.stored_data.ask_string_result = None
-        return result
-    
+    def post_password_dialog(self, title, msg, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.password_dialog(
+            title, msg, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
 
-    def post_input_listener_dialog(self):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_bool_result = None
-        # Add the input_listener task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.input_listener_dialog(is_callback=True))
-        # Wait for the dialog to complete
-        #self.root.wallet_thread_manager.dialog_event.wait()
-        ## Return the result
-        #result = self.root.stored_data.ask_bool_result
-        #self.root.stored_data.ask_bool_result = None
-        #return result
-    
-    
-    def post_backup_mnemonic_dialog(self, mnemonic=None):
-        # Reset the event and result
-        self.root.wallet_thread_manager.dialog_event.clear()
-        self.root.stored_data.ask_bool_result = None
-        # Add the ask_string task to the queue
-        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.backup_mnemonic_dialog(is_callback=True, mnemonic=mnemonic))
-        # Wait for the dialog to complete
-        self.root.wallet_thread_manager.dialog_event.wait()
-        # Return the result
-        result = self.root.stored_data.ask_bool_result
-        self.root.stored_data.ask_bool_result = None
-        return result
-    
 
-    def post_2FA_QR_dialog(self, qr_window_data):
+    def post_password_dialog_with_confirmation(self, title, msg, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.password_dialog_with_confirmation(
+            title, msg, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    def post_tx_confirmation(self, sender, receiver, amount, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.tx_confirmation_dialog(
+            sender, receiver, amount, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    def post_backup_mnemonic_dialog(self, mnemonic, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.backup_mnemonic_dialog(
+            mnemonic, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    def post_input_listener_dialog(self, close_event, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.input_listener_dialog(
+             modal=modal, result_queue=result_queue,
+             close_event=close_event
+         )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    def post_messagebox(self, title, msg, modal=True):
+        dialog_lambda = lambda result_queue: self.root.dialogs.messagebox(
+            title, msg, modal=modal, result_queue=result_queue
+        )
+        return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    # =========================================================================
+    # == GUI THREAD NON-BLOCKING API
+    # =========================================================================
+
+    def post_about_wallet_dialog(self, modal=True):
         self.root.wallet_thread_manager.request_queue.put(
-            lambda: self.root.dialogs.show_2FA_QR_dialog(
-                qr_window_data=qr_window_data,
-                from_gui=True
+            lambda: self.root.dialogs.about_wallet_dialog(modal=modal)
+        )
+
+
+    def post_create_wallet_dialog(self, modal=True):
+        self.root.wallet_thread_manager.request_queue.put(
+            lambda: self.root.dialogs.create_wallet_dialog(modal=modal)
+        )
+
+
+    def post_show_address_info(self, event=None, entry_data=None, entry_type=None, wait=False, modal=True):
+        if wait:
+            dialog_lambda = lambda result_queue: self.root.dialogs.address_info(
+                event=event,
+                entry_data=entry_data,
+                entry_type=entry_type,
+                result_queue=result_queue,
+                modal=modal
             )
+            return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+        else:
+            self.root.wallet_thread_manager.request_queue.put(
+                lambda ed=entry_data, et=entry_type, ev=event: self.root.dialogs.address_info(
+                    event=ev, entry_data=ed, entry_type=et, modal=modal
+                )
+            )
+            return None
+        
+    def post_2FA_QR_dialog(self, qr_window_data, modal=True):
+        self.root.wallet_thread_manager.request_queue.put(
+            lambda: self.root.dialogs.show_2FA_QR_dialog(qr_window_data, from_gui=True, modal=modal)
         )
     
     
@@ -2350,6 +2328,7 @@ class Callbacks:
         currency_code = self.root.stored_data.currency_code
         currency_symbol = self.root.stored_data.currency_symbol
         price_data = self.root.stored_data.price_data
+        warning_agreed = self.root.stored_data.warning_agreed
 
         self.root.stored_data = StoredData()
         
@@ -2357,6 +2336,7 @@ class Callbacks:
             self.root.stored_data.wallet_file = wallet_file
             self.root.stored_data.wallet_authenticated = wallet_authenticated
         
+        self.root.stored_data.warning_agreed = warning_agreed
         self.root.stored_data.currency_code = currency_code
         self.root.stored_data.currency_symbol = currency_symbol
         self.root.stored_data.price_data = price_data
@@ -2439,6 +2419,8 @@ class StoredData:
     node_validation: Optional[str] = None
     node_valid: Optional[bool] = None
     node_validation_performed: bool = False
+
+    warning_agreed: Optional[bool] = False
     
     
 if __name__ == "__main__":

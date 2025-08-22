@@ -14,11 +14,18 @@ from tktooltip import ToolTip
 import uuid
 
 class CustomDialog:
-    def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, **kwargs):
+    def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, on_submit=None, on_cancel=None, modal=True, eval_context=None, **kwargs):
         self.callbacks = callbacks
         self.custom_args = kwargs
         self.classes = classes
-                # Handle the case where there is no parent window.
+        
+        # Store the context dictionary for later use by resolve_command/resolve_callback.
+        self.eval_context = eval_context if eval_context is not None else {}
+        
+        self.on_submit = on_submit
+        self.on_cancel = on_cancel
+
+        # Handle the case where there is no parent window.
         self._is_root_temp = False
         if parent is None:
             # Create a temporary, hidden root window.
@@ -32,16 +39,16 @@ class CustomDialog:
         self.dialog = tk.Toplevel(dialog_parent)
         self.dialog.title(title)
         
+        # Hide the window right after creation. It exists in memory but is not visible.
+        # This prevents the initial flicker at the wrong location.
+        self.dialog.withdraw()
+        
         self.styles = tb.Style()
         
         # Only set transient if a real parent exists.
         if parent:
             self.dialog.transient(parent)
 
-
-        # Position the dialog window relative to the parent window
-        self.center_dialog(parent)
-        self.validate_center(parent)
 
         # Make the dialog not resizable
         self.dialog.resizable(False, False)
@@ -59,11 +66,9 @@ class CustomDialog:
 
         row_count = 0
         
-        # Loop through each item in prompt
         for item_index, item in enumerate(prompt):
             widget_id = str(uuid.uuid4())
             
-            # Parse grid config
             grid_config = self.parse_config_string(item.get('grid_config', ''))
             if grid_config:
                 if 'row' in grid_config:
@@ -90,12 +95,9 @@ class CustomDialog:
                     widget_parent = self.widget_references.get(item.get('parent'), self.master)
                 else:                    
                     widget_parent = self.master
-            
-            
-            
-             # Set variables for this widget using the unique ID
+          
             if 'variables' in item:
-                variables = item.get('variables', {})  # This will default to an empty dictionary if 'variables' is missing
+                variables = item.get('variables', {})
                 self.variable_manager.update_variables(widget_id, variables)
 
             if widget_type:
@@ -104,18 +106,12 @@ class CustomDialog:
                 if 'widget_name' in item:
                     self.widget_references[item['widget_name']] = widget  
 
-                          
-
-            # Handle widget command
             command_config = self.parse_config_string(item.get('command', ''))         
             if command_config:
                 command = self.resolve_command(**command_config)
-                if widget_type != 'label':
+                if command and widget_type != 'label': # Check for command existence
                     widget.config(command=command)
 
-            
-
-            # Handle widget binds
             if 'binds' in item:
                 for bind in item['binds']:
                     bind_config = self.parse_config_string(bind.get('bind_config', ''))
@@ -126,15 +122,14 @@ class CustomDialog:
                 tooltip_config = self.parse_config_string(item.get('tooltip_config', ''))
                 ToolTip(widget, **tooltip_config)
 
-            # Increment the row count for the next element
             if grid_config:
                 row_count += 1
         
-               # Center dialog window after all widgets are added
+        self.dialog.update_idletasks()
+        
         self.center_dialog(parent)
-        # Validation check to re-center if necessary
-        self.dialog.after(50, lambda: self.validate_center(parent))
-
+        
+        self.dialog.deiconify()
 
         self.dialog.bind("<Return>", lambda event: self.submit_entry())
         self.dialog.bind("<Button-1>", self.on_root_click)
@@ -146,20 +141,18 @@ class CustomDialog:
         if parent:
             self.dialog.transient(parent)
 
-        try:
-            self.dialog.grab_set()  # Modal dialog
-        except tk.TclError:
-            pass
-
-        self.dialog.wait_window()  # Wait for the dialog to be closed
-    
+        if modal:
+            try:
+                self.dialog.grab_set()
+            except tk.TclError:
+                pass
+            
 
     def center_dialog(self, parent):
         """Center the dialog. If a parent is provided, center relative to it.
            Otherwise, center on the screen."""
-        self.dialog.update_idletasks()  # Ensure accurate width/height
-        dialog_width = self.dialog.winfo_width()
-        dialog_height = self.dialog.winfo_height()
+        dialog_width = self.dialog.winfo_reqwidth()
+        dialog_height = self.dialog.winfo_reqheight()
 
         if parent:
             # Center relative to the parent window
@@ -495,9 +488,10 @@ class CustomDialog:
         else:
             self.result = entry_values, checkbox_values, radio_values
         
+        if self.on_submit:
+            self.on_submit(self.result)
+
         self.close_dialog()
-        
-        #self.dialog.destroy()
 
 
     def cancel(self, event=None):
@@ -505,9 +499,10 @@ class CustomDialog:
         radio_values = tuple(sv.get() for sv in self.radio_variables.values())
         self.result = [None], checkbox_values, radio_values
         
-        self.close_dialog()
+        if self.on_cancel:
+            self.on_cancel(self.result)
 
-        #self.dialog.destroy()
+        self.close_dialog()
     
 
     def identify_selectable_widgets(self, container):

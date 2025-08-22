@@ -11,29 +11,72 @@ class Dialogs:
     def __init__(self, root):
         self.root = root
         self.dialog_functions = DialogFunctions(self.root, self)
+    
 
-
-    def messagebox(self, title, msg, is_callback=False):
-        result, _, _ = CustomDialog(parent=self.root, title=title, 
-                                    prompt=[
-                                    {'type': 'label', 
-                                     "config":"text='{}', wraplength=500, justify='left'".format(msg), 
-                                     "grid_config":"column=0"},
-                                    
-                                    {'type': 'button', 
-                                     "config":"text='Okay'", 
-                                     "command":"command_str=self.submit_entry", 
-                                     "grid_config":"row=2, column=0, sticky='we', padx=(0, 5), pady=(10, 0)"}
-                                     ], true_on_submit=True).result
+    # =========================================================================
+    # == INTERNAL HELPER METHOD
+    # =========================================================================
+    def _create_and_run_dialog(self, prompt, title, result_queue=None, on_complete=None, result_processor=None, modal=True, **kwargs):
+        """
+        A centralized, universal helper to create and run a CustomDialog.
+        It operates in three modes depending on the arguments provided:
         
-        if is_callback:
-                self.root.stored_data.ask_bool_result = result[0]
-                self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0]
+        1. Sync (blocking): If `result_queue` is provided. Puts result in the queue.
+        2. Async (callback): If `on_complete` is provided. Calls on_complete(result).
+        3. Fire-and-forget: If neither is provided. Does nothing on close.
+        """
+        # Define a default result processor if none is given.
+        if result_processor is None:
+            def default_processor(res):
+                return res[0][0] if res and res[0] else None
+            result_processor = default_processor
+
+        def process_and_finish(raw_result, was_canceled=False):
+            # 1. On cancel, the result is always None. Otherwise, process it.
+            final_result = None if was_canceled else result_processor(raw_result)
+            
+            # 2. Finish the operation based on the mode.
+            if result_queue:
+                result_queue.put(final_result)
+            elif on_complete:
+                on_complete(final_result)
+            # If neither, do nothing.
+        
+        on_submit_callback = lambda res: process_and_finish(res, was_canceled=False)
+        on_cancel_callback = lambda res: process_and_finish(res, was_canceled=True)
+
+        CustomDialog(
+            parent=self.root,
+            title=title,
+            prompt=prompt,
+            on_submit=on_submit_callback,
+            on_cancel=on_cancel_callback,
+            modal=modal,
+            **kwargs
+        )
+
+    def messagebox(self, title, msg, modal=True, result_queue=None, on_complete=None):
+        prompt = [
+            {
+                "type": "label", 
+                "config":"text='{}', wraplength=500, justify='left'".format(msg), 
+                "grid_config":"column=0"
+            },
+                                    
+            {
+                'type': 'button', 
+                "config":"text='Okay'", 
+                "command":"command_str=self.submit_entry", 
+                "grid_config":"row=2, column=0, sticky='we', padx=(0, 5), pady=(10, 0)"
+            }
+            
+            ]
+        # A messagebox just needs to unblock the thread, the return value is not important.
+        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, result_processor=lambda r: True, modal=modal)
+    
 
 
-    def address_info(self, event=None, entry_data=None, entry_type=None,  is_callback=False):
+    def address_info(self, event=None, entry_data=None, entry_type=None, modal=True, result_queue=None, on_complete=None):
         
         if not entry_data:
             widget = event.widget if event else self.root.current_event.widget
@@ -45,14 +88,18 @@ class Dialogs:
                     item = widget.item(row_id)
                     address = item['values'][col_id]
                     entry_data, entry_type = self.root.wallet_operations.get_entry_data(address)        
+    
+        
+        if not entry_data:
+            # If we still don't have data, we can't proceed.
+            # We must handle the queue/callback to prevent deadlocks.
+            if result_queue: result_queue.put(None)
+            if on_complete: on_complete(None)
+            return
         
         entry_type = "Generated Address" if entry_type == 'entries' else "Imported Address"
-      
-        if entry_data:
-            CustomDialog(parent=self.root, 
-                         title="Address Info", 
-                         prompt=
-                            [
+        
+        prompt=[
                                 {"type":"label", "config":"text='Address Info', font='Helvetica 16 bold'", 
                                  "grid_config":"column=0, columnspan=2"},
                                 
@@ -195,24 +242,286 @@ class Dialogs:
                                  "config":"text='Close'",
                                  "command":"command_str=self.cancel",
                                  "grid_config":"column=0, columnspan=2, sticky='ew'"}
-                            ], true_on_submit=False, callbacks={"set_key_visibility":self.dialog_functions.set_key_visibility, "toggle_key_visibility":self.dialog_functions.toggle_key_visibility},
-                            classes={"KeyToggle":KeyToggle}).result
-        if is_callback:
-            self.root.wallet_thread_manager.dialog_event.set()
+                            ]
+            
+        dialog_callbacks = {
+            "set_key_visibility": self.dialog_functions.set_key_visibility,
+            "toggle_key_visibility": self.dialog_functions.toggle_key_visibility
+        }
 
+        self._create_and_run_dialog(
+            prompt=prompt,
+            title="Address Info",
+            result_queue=result_queue,
+            on_complete=on_complete,
+            result_processor=lambda r: True, # Return True on close
+            callbacks=dialog_callbacks,
+            classes={"KeyToggle": KeyToggle},
+            modal=modal
+        )
+            
 
-    def create_wallet_dialog(self):
+    def show_recovery_warning_dialog(self, result_queue=None, on_complete=None, modal=True):
+        """
+        Shows a single, persistent, multi-page security warning dialog with
+        complete and correct layout for all widgets.
+        """
+        page_titles = ["Wallet File", "Wallet Security", "Recovery Phrase", "Disclaimer & Agreement"]
 
-        if self.root.stored_data.operation_mode != 'send':
-            self.root.gui_utils.close_wallet()
-        else:
-            self.messagebox("Error", "Can not create a new wallet while a transaction is taking place.")
-            return
+        prompt = [
+            {
+                "type": "frame", "class": "PageIndicators", "widget_name": "indicators",
+                "class_config": f"pages={page_titles}",
+                "grid_config": "column=0, sticky='ew', pady=(0, 15)"
+            },
+            {
+                "type": "frame", "class": "PageManager", "widget_name": "page_manager",
+                "grid_config": "column=0, sticky='nsew'"
+            },
+
+            # =========================================================================
+            # == PAGE 1: Wallet File
+            # =========================================================================
+            {"type": "frame", "widget_name": "page_1", "parent": "page_manager"},
+            
+            {"type": "label", "parent": "page_1",
+             "config": "text='1. The Wallet File', font='Helvetica 12 bold'",
+             "grid_config": "sticky='w'"},
+            
+            {"type": "label", "parent": "page_1",
+             "config": "text='The file you are about to create is a digital vault containing the cryptographic keys to a Denaro wallet. It is strongly recommended to make multiple, secure, offline backups of this file.', justify='left', anchor='w', wraplength=600",
+             "grid_config": "sticky='w', pady=(5,20)"},
+            
+            {"type": "frame", "widget_name": "actions_1", "parent": "page_1",
+             "grid_config": "sticky='ew', pady=(20,0)"},
+            
+            {"type": "button", "parent": "actions_1",
+             "config": "text='Cancel'", "command": "command_str=self.cancel",
+             "pack_config":"side='left', fill='x', expand=True, padx=(0,5)"},
+            
+            {"type": "button", "parent": "actions_1",
+             "config": "text='Next'", "command": "command_str='go_to_next_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config":"side='left', fill='x', expand=True, padx=(5,0)"},
+
+            # =========================================================================
+            # == PAGE 2: Security
+            # =========================================================================
+            {"type": "frame", "widget_name": "page_2", "parent": "page_manager"},
+            
+            {"type": "label", "parent": "page_2",
+             "config": "text='2. Wallet Security', font='Helvetica 12 bold'",
+             "grid_config": "sticky='w'"},
+            
+            {"type": "label", "parent": "page_2",
+             "config": "text=\"If you choose to encrypt your wallet file, a password is required. Your password is the ONLY way to decrypt that specific file. This software has no password recovery feature.\n\nTwo-Factor Authentication (2FA) can be added as an extra layer of security. If you enable it, accessing your wallet file will require BOTH your password AND a 6-digit code from your authenticator app.\n\nIf you lose either your password or your 2FA device, the wallet client cannot recover the data stored in your wallet file. In this scenario, A 12-word Recovery Phrase is the only way to potentially restore the cryptographic keys nessessary for accessing your funds.\", justify='left', anchor='w', wraplength=600",
+             "grid_config": "sticky='w', pady=(5,10)"},
+            
+            {"type": "label", "parent": "page_2",
+             "config": "text='SECURITY WARNING:', font='Helvetica 10 bold', foreground='red'",
+             "grid_config": "sticky='w'"},
+            
+            {"type": "label", "parent": "page_2",
+             "config": "text=\"After 10 consecutive failed password attempts, the 'Wallet Annihilation' feature will automatically be triggered. This is a security measure designed to prevent against unauthorized access to a wallet file. It will permanently delete the wallet file and securely erase any of it's data lingering in system memory. This action is irreversible.\", justify='left', anchor='w', wraplength=600",
+             "grid_config": "sticky='w', pady=(0,20)"},
+            
+            {"type": "frame", "widget_name": "actions_2", "parent": "page_2",
+             "grid_config": "sticky='ew', pady=(20,0)"},
+            
+            {"type": "button", "parent": "actions_2",
+             "config": "text='Back'", "command": "command_str='go_to_previous_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config":"side='left', fill='x', expand=True, padx=(0,5)"},
+            
+            {"type": "button", "parent": "actions_2",
+             "config": "text='Next'", "command": "command_str='go_to_next_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config":"side='left', fill='x', expand=True, padx=(5,0)"},
+
+            # =========================================================================
+            # == PAGE 3: Recovery
+            # =========================================================================
+            {"type": "frame", "widget_name": "page_3", "parent": "page_manager"},
+            
+            {"type": "label", "parent": "page_3",
+             "config": "text='3. Recovery Phrase', font='Helvetica 12 bold'",
+             "grid_config": "sticky='w'"},
+            
+            {"type": "label", "parent": "page_3",
+             "config": "text='A 12-word Recovery Phrase (a.k.a. Mnemonic Phrase or Seed Phrase) is used to generate the cryptographic keys that control access to your funds. This allows you to also recover your funds.\n\nThis wallet client supports two wallet types:', justify='left', anchor='w', wraplength=600",
+
+             "grid_config": "sticky='w', pady=(5,0)"},
+
+            {"type": "frame", "widget_name": "bullet_frame_1", "parent": "page_3", "grid_config": "sticky='w', padx=(10, 0), pady=(5,0)"},
+            {"type": "label", "config": "text='•'", "parent": "bullet_frame_1", "pack_config": "side='left', anchor='n'"},
+            {"type": "label", "config": "text='Deterministic Wallets use a single Master Recovery Phrase to generate all addresses in the wallet.', justify='left', wraplength=600", "parent": "bullet_frame_1", "pack_config": "side='left'"},
+            
+            {"type": "frame", "widget_name": "bullet_frame_2", "parent": "page_3", "grid_config": "sticky='w', padx=(10, 0), pady=(5,0)"},
+            {"type": "label", "config": "text='•'", "parent": "bullet_frame_2", "pack_config": "side='left', anchor='n'"},
+            {"type": "label", "config": "text='Non-Deterministic Wallets provide a unique Recovery Phrase for each individual address generated.', justify='left', wraplength=600", "parent": "bullet_frame_2", "pack_config": "side='left'"},
+
+            {"type": "label", "parent": "page_3",
+             "config": "text='It is recommended to write down every phrase that you are given and store it securely offline.', justify='left', anchor='w', wraplength=600",
+             "grid_config": "sticky='w', pady=(10,20)"},
+            
+            {"type": "frame", "widget_name": "actions_3", "parent": "page_3",
+             "grid_config": "sticky='ew', pady=(20,0)"},
+            
+            {"type": "button", "parent": "actions_3",
+             "config": "text='Back'", "command": "command_str='go_to_previous_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config":"side='left', fill='x', expand=True, padx=(0,5)"},
+            
+            {"type": "button", "parent": "actions_3",
+             "config": "text='Next'", "command": "command_str='go_to_next_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config":"side='left', fill='x', expand=True, padx=(5,0)"},
+
+            # =========================================================================
+            # == PAGE 4: Disclaimer & Agreement
+            # =========================================================================
+            {"type": "frame", "widget_name": "page_4", "parent": "page_manager"},
+            
+            {"type": "label", "parent": "page_4",
+             "config": "text='Disclaimer and Agreement', font='Helvetica 12 bold'",
+             "grid_config": "sticky='w'"},
+            
+            {"type": "label", "parent": "page_4",
+             "config": "text='This software is open source and is provided \"as is\" under the MIT License without guarantees or warranties of any kind. Users are solely responsible for the security and management of their assets.', wraplength=600, justify='left'",
+             "grid_config": "sticky='w', pady=(5,0)"},
+            
+            {"type": "label", "parent": "page_4",
+             "config": "text=\"Neither The-Sycorax nor contributors of this project assume liability for any loss of funds incurred through the use of this software. The use of this software implies acceptance of all associated risks, including financial loss.\", wraplength=600, justify='left'",
+             "grid_config": "sticky='w', pady=(5,15)"},
+            
+            {"type": "separator", "parent": "page_4",
+             "config": "orient='horizontal'",
+             "grid_config": "sticky='we', pady=(5, 5)"},
+
+            {"type": "label", "parent": "page_4", 
+             "config": "text=\"I accept that I am solely responsible for securing my wallet file, password, and any recovery phrase, and that the developers assume no liability for any loss of funds incurred through the use of this software.\n\", wraplength=650, justify='left'",
+             "grid_config": "column=0, sticky='w', pady=(5,0)"}, 
+            
+            {"type": "checkbox",
+             "widget_name": "agree_checkbox", "parent": "page_4", 
+             "config": "text='I have read, understood, and agree to these terms.'",
+             "command": "command_str='deferred_toggle', args='(self,)', execute_on_load=False, first=False",
+             "style_config": "style='agree.TCheckbutton', wraplength=600",
+              "grid_config": "column=0, sticky='w'"},
+            
+            {"type": "frame", "widget_name": "actions_4", "parent": "page_4",
+             "grid_config": "sticky='ew', pady=(20,0)"},
+            
+            {"type": "button", "parent": "actions_4",
+             "config": "text='Back'", "command": "command_str='go_to_previous_page', args='(self,)', execute_on_load=False, first=False",
+             "pack_config": "side='left', fill='x', expand=True, padx=(0,5)"},
+            
+            {"type": "button", "widget_name": "continue_button",
+             "config": "text='Continue', state='disabled'",
+             "parent": "actions_4", "command": "command_str=self.submit_entry",
+             "pack_config": "side='left', fill='x', expand=True, padx=(5,0)"},
+
+            {"type": "label",
+             "command": "command_str='initial_page_setup', args='(self,)', execute_on_load=False, first=False, execute_on_load=True"}
+        ]
+
+        dialog_callbacks = {
+            "go_to_next_page": self.dialog_functions.go_to_next_page,
+            "go_to_previous_page": self.dialog_functions.go_to_previous_page,
+            "deferred_toggle": self.dialog_functions.deferred_toggle_bridge,
+            "initial_page_setup": self.dialog_functions.initial_page_setup
+        }
+
+        self._create_and_run_dialog(prompt=prompt, title="Security Warnings & Terms",
+            result_queue=result_queue, on_complete=on_complete, modal=modal,
+            result_processor=lambda r: True if r else None,
+            classes={"PageIndicators": PageIndicators, "PageManager": PageManager},
+            callbacks=dialog_callbacks)
         
-        result, checkbox_values, _ = CustomDialog(parent=self.root, 
-                            title="Create Wallet", 
-                            prompt=
-                            [     
+    def create_wallet_dialog(self, result_queue=None, on_complete=None, modal=True):
+        """
+        Orchestrates the full, multi-step workflow for creating a wallet,
+        now with correctly sequenced error message boxes.
+        """
+        def final_handler(result):
+            """The single point of exit for the entire workflow."""
+            if result_queue: result_queue.put(result)
+            if on_complete: on_complete(result)
+
+        def on_warning_agreed(user_agreed):
+            """Called after the warning dialog."""
+            if user_agreed:
+                self.root.stored_data.warning_agreed = True
+                self._create_wallet_name_step(on_complete=on_wallet_name_provided, modal=modal)
+            else:
+                final_handler(None)
+
+        def on_wallet_name_provided(result):
+            """Called after the user provides a wallet name and options."""
+            if result is None:
+                final_handler(None)
+                return
+            
+            entry_values, checkbox_values, _ = result
+            filename = entry_values[0] if entry_values else ""
+            
+            if not filename:
+                # Define what to do AFTER the error messagebox closes.
+                def on_error_closed(_):
+                    # Restart the name entry step.
+                    self._create_wallet_name_step(on_complete=on_wallet_name_provided, modal=modal)
+
+                # Show the messagebox in ASYNC/CALLBACK mode.
+                self.messagebox(
+                    title='Error',
+                    msg='No wallet name provided.',
+                    on_complete=on_error_closed
+                )
+                return # Stop here and wait for the callback.
+
+            def start_thread_with_password(password):
+                is_encrypted = checkbox_values[2]
+                if is_encrypted and not password:
+                    final_handler(None)
+                    return
+                enable_2fa = is_encrypted and checkbox_values[1]
+                self.root.wallet_thread_manager.start_thread("create_wallet", self.root.wallet_operations.create_wallet, 
+                    args=(filename, password, checkbox_values[0], is_encrypted, enable_2fa))
+                final_handler(True)
+
+            if checkbox_values[2]:
+                self.password_dialog_with_confirmation(
+                    title='Create Wallet',
+                    msg='Please choose a password for wallet encryption.',
+                    on_complete=start_thread_with_password,
+                    modal=modal
+                )
+            else:
+                start_thread_with_password(None)
+
+        
+        # 1. Check pre-conditions.
+        if self.root.stored_data.operation_mode == 'send':
+            # Define what to do AFTER this error messagebox closes.
+            def on_error_closed(_):
+                # End the workflow.
+                final_handler(None)
+
+            # Show the messagebox in ASYNC/CALLBACK mode.
+            self.messagebox(
+                title="Error",
+                msg="Cannot create a new wallet while a transaction is taking place.",
+                on_complete=on_error_closed
+            )
+            # Stop here and wait for the callback.
+            return
+            
+        self.root.gui_utils.close_wallet()
+
+        if not self.root.stored_data.warning_agreed:
+            self.show_recovery_warning_dialog(on_complete=on_warning_agreed, modal=modal)
+        else:
+            on_warning_agreed(True)
+
+    
+    def _create_wallet_name_step(self, on_complete, modal=True):
+        """A private helper for the second step of the create wallet workflow."""
+        prompt = [     
                                 {"type":"label", "config":"text='Create Wallet', font='Helvetica 14 bold'", 
                                  "grid_config":"column=0"},
 
@@ -265,92 +574,22 @@ class Dialogs:
                                  "parent":"frame_1",
                                  "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},
 
-                            ], callbacks={"enable_2fa_checkbox":self.dialog_functions.enable_2fa_checkbox}).result
-        
-        filename = result[0]
+                            ]
 
-        if filename == '':
-            self.messagebox('Error', 'No wallet name provided.')
-            self.create_wallet_dialog()
-            return
-            
-        if filename is None:
-            return
-        
-        password = None
+        self._create_and_run_dialog(prompt=prompt, title="Create New Wallet", on_complete=on_complete,
+            result_processor=lambda r: r, # Return raw result tuple
+            modal=modal,
+            callbacks={"enable_2fa_checkbox": self.dialog_functions.enable_2fa_checkbox})
+ 
 
-        
-        if checkbox_values[2]:
-
-            password = self.password_dialog_with_confirmation(title='Create Wallet', msg=f'Please choose a password.\nThis will be used for wallet encryption and decryption.', is_callback=False)
-
-            if not password:
-                return
-
-            enable_2fa_value = checkbox_values[1]
-
-        if checkbox_values[2] is False:
-            enable_2fa_value = False
-        
-        self.root.wallet_thread_manager.start_thread("create_wallet", self.root.wallet_operations.create_wallet, args=(result[0], password, checkbox_values[0], checkbox_values[2], enable_2fa_value), )
-    
-    def password_dialog(self, title, msg, show, is_callback):
-        # This is called by the main thread to  show the dialog
-        result, _, _ = CustomDialog(parent=self.root, title=title, 
-                                        prompt=[
-                                                {'type': 'label', 
-                                                 "config":"text={}".format(msg), 
-                                                 "grid_config":"column=0, columnspan=2"},
-
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_1", 
-                                                 "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(10, 0)"}, 
-                                                 
-                                                {"type":"entry", 
-                                                 "widget_name":"password_entry", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "parent":"frame_1", 
-                                                 "pack_config":"side='left', expand=True, fill='x'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"password_entry_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)'"}], 
-                                                 "parent":"frame_1", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                #{'type': 'entry', 
-                                                # "config":"{}".format(f"show={show}" if show else ''), 
-                                                # "binds":[{"bind_config":"event='<Return>',  callback_str='lambda e:self.submit_entry'"}],
-                                                # "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
-
-                                                {'type': 'button', 
-                                                 "config":"text='Submit'", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
-
-                                                {'type': 'button', 
-                                                 "config":"text='Cancel'", 
-                                                 "command":"command_str=self.cancel", 
-                                                 "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
-                                                                                              ], callbacks={"set_entry_visibility":self.dialog_functions.set_entry_visibility, "toggle_entry_visibility":self.dialog_functions.toggle_entry_visibility}, classes={"KeyToggle":KeyToggle}).result
-        
-        if is_callback:
-                self.root.stored_data.ask_string_result = result[0]
-                self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0]
-        
-
-    def password_dialog_with_confirmation(self, title=None, msg=None, is_callback=False):
-        while True:
-            result, _, _ = CustomDialog(parent=self.root, title=title, 
-                        prompt=[
+    def password_dialog_with_confirmation(self, title, msg, modal=True, result_queue=None, on_complete=None):
+        """
+        A non-blocking workflow to get a confirmed password.
+        Instead of returning a value, it calls `on_complete(password)` when done.
+        `password` will be None if the user cancels.
+        """
+        def get_passwords_step():
+            prompt = [
                                 {"type":"label", 
                                 "config":"text={}".format(msg), 
                                 "grid_config":"column=0, sticky='w', pady=(20, 0)"}, 
@@ -422,31 +661,128 @@ class Dialogs:
                                  "command":"command_str=self.cancel", 
                                  "parent":"frame_3",
                                  "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},                                  
-                                ], callbacks={"focus_next_widget":self.dialog_functions.focus_next_widget, "set_entry_visibility":self.dialog_functions.set_entry_visibility, "toggle_entry_visibility":self.dialog_functions.toggle_entry_visibility}, classes={"KeyToggle":KeyToggle}).result
-            
-            if result[0] is None:
-                password = None
-                break
+                                ]
+
+            def handle_result(result):
+                # This function is the callback for the password entry dialog.
+                if result is None:
+                    # User canceled the password entry. End the workflow.
+                    if result_queue: result_queue.put(None)
+                    if on_complete: on_complete(None)
+                    return
                 
-            if result[0] == '':
-                self.messagebox('Error', 'No password provided.')
-                continue
-    
-            if result[1] != result[0] or result[1] is None:
-                self.messagebox('Error', 'Passwords do not match.')
-                continue
-            password = result[0]
-            break
-        if is_callback:
-            self.root.stored_data.ask_string_result = password
-            self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return password
+                pass1, pass2 = result
+
+                if not pass1:
+                    # Define what to do AFTER the messagebox closes.
+                    # The argument '_' is the result from the messagebox, which we ignore.
+                    def on_messagebox_closed(_):
+                        get_passwords_step() # Re-show the password dialog.
+
+                    # Show the messagebox in ASYNC/CALLBACK mode.
+                    self.messagebox(
+                        title='Error',
+                        msg='No password provided.',
+                        on_complete=on_messagebox_closed
+                    )
+                    return # Stop here and wait for the callback.
+
+                if pass1 != pass2:
+                    # Define what to do AFTER the messagebox closes.
+                    def on_messagebox_closed(_):
+                        get_passwords_step() # Re-show the password dialog.
+                    
+                    # Show the messagebox in ASYNC/CALLBACK mode.
+                    self.messagebox(
+                        title='Error', 
+                        msg='Passwords do not match.',
+                        on_complete=on_messagebox_closed
+                    )
+                    return # Stop here and wait for the callback.
+                                
+                # If we reach here, the passwords are valid and match.
+                # Finish the workflow based on the original calling mode.
+                if result_queue: result_queue.put(pass1)
+                if on_complete: on_complete(pass1)
+            
+            self._create_and_run_dialog(prompt=prompt, title=title, on_complete=handle_result,
+                result_processor=lambda res: (res[0][0], res[0][1]),
+                callbacks={"focus_next_widget":self.dialog_functions.focus_next_widget, "set_entry_visibility":self.dialog_functions.set_entry_visibility, "toggle_entry_visibility":self.dialog_functions.toggle_entry_visibility}, classes={"KeyToggle": KeyToggle}, modal=modal)
+            
+        # Start the first step of this sub-workflow
+        get_passwords_step()
+
+    def password_dialog(self, title, msg, modal=True, result_queue=None, on_complete=None):
+        """
+        Shows a dialog to ask for a single password entry.
+        It returns the entered string or None if canceled.
+        """
+        # Define the UI layout for the password dialog.
+        prompt = [
+                                                {'type': 'label', 
+                                                 "config":"text={}".format(msg), 
+                                                 "grid_config":"column=0, columnspan=2"},
 
 
-    def confirmation_prompt(self, title, msg=None, msg_2=None, is_callback=False):
-        result, _, _ = CustomDialog(parent=self.root, title=title, 
-                                    prompt=[
+                                                {"type":"frame", 
+                                                 "widget_name":"frame_1", 
+                                                 "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(10, 0)"}, 
+                                                 
+                                                {"type":"entry", 
+                                                 "widget_name":"password_entry", 
+                                                 "config":"font='Helvetica 12 bold', show='*'", 
+                                                 "parent":"frame_1", 
+                                                 "pack_config":"side='left', expand=True, fill='x'"}, 
+
+                                                {"type":"button", 
+                                                 "widget_name":"password_entry_toggle", 
+                                                 "class":"KeyToggle", 
+                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
+                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
+                                                 "config":"style='toggle1.TButton', padding=0", 
+                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)', execute_on_load=True, first=True", 
+                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)'"}], 
+                                                 "parent":"frame_1", 
+                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
+
+                                                #{'type': 'entry', 
+                                                # "config":"{}".format(f"show={show}" if show else ''), 
+                                                # "binds":[{"bind_config":"event='<Return>',  callback_str='lambda e:self.submit_entry'"}],
+                                                # "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
+
+                                                {'type': 'button', 
+                                                 "config":"text='Submit'", 
+                                                 "command":"command_str=self.submit_entry", 
+                                                 "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
+
+                                                {'type': 'button', 
+                                                 "config":"text='Cancel'", 
+                                                 "command":"command_str=self.cancel", 
+                                                 "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
+                                                                                              ]
+
+        # Define the special callbacks and classes needed for this dialog.
+        dialog_callbacks = {
+            "set_entry_visibility": self.dialog_functions.set_entry_visibility,
+            "toggle_entry_visibility": self.dialog_functions.toggle_entry_visibility
+        }
+        dialog_classes = {
+            "KeyToggle": KeyToggle
+        }
+
+        # Call the helper. The default result processor is perfect for this,
+        # as it just needs to extract the single entry's value.
+        # We pass the callbacks and classes dicts as keyword arguments.
+        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete,
+                                    callbacks=dialog_callbacks, classes=dialog_classes, modal=modal)
+
+    def confirmation_prompt(self, title, msg, msg_2=None, modal=True, result_queue=None, on_complete=None):
+        """
+        Shows a Yes/No confirmation dialog. Uses the helper method with a
+        custom result processor to return a clean boolean value.
+        """
+        # Define the UI layout for the dialog.
+        prompt = [
                                             {"type": "label", 
                                              "config":"text={}".format(msg), 
                                              "grid_config":"column=0"},
@@ -479,50 +815,35 @@ class Dialogs:
                                              "parent":"frame_2",
                                              "command":"command_str=self.cancel", 
                                              "pack_config":"side='left', fill='x', expand=True, padx=(5, 0), pady=(0, 5)"}
-                                            ], true_on_submit=True).result
+                                            ]
         
-        if is_callback:
-                self.root.stored_data.ask_bool_result = result[0]
-                self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0]
-
-
-    def ask_string(self, title, msg, show, is_callback):
-        # This is called by the main thread to  show the dialog
-        result, _, _ = CustomDialog(parent=self.root, title=title, 
-                                        prompt=[
-                                                {'type': 'label', 
-                                                 "config":"text={}".format(msg), 
-                                                 "grid_config":"column=0, columnspan=2"},
-
-                                                {'type': 'entry', 
-                                                 "config":"{}".format(f"show={show}" if show else ''), 
-                                                 "binds":[{"bind_config":"event='<Return>',  callback_str='lambda e:self.submit_entry'"}],
-                                                 "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
-
-                                                {'type': 'button', 
-                                                 "config":"text='Submit'", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
-
-                                                {'type': 'button', 
-                                                 "config":"text='Cancel'", 
-                                                 "command":"command_str=self.cancel", 
-                                                 "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
-                                               ]).result
+        # Define a custom function to process the result.
+        # CustomDialog with `true_on_submit` returns ([True], (), ()) on 'Yes'.
+        # We want to convert this to a simple boolean `True`.
+        def confirmation_processor(res): return res and res[0] and res[0][0] is True
+        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue,
+                                    on_complete=on_complete, result_processor=confirmation_processor, true_on_submit=True, modal=modal)
         
-        if is_callback:
-                self.root.stored_data.ask_string_result = result[0]
-                self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0]
+
+    def ask_string(self, title, msg, show, modal=True, result_queue=None, on_complete=None):
+        prompt = [
+            {'type': 'label', "config":f"text='{msg}'", "grid_config":"column=0, columnspan=2"},
+            {'type': 'entry', "config":f"show='*'" if show else "", "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
+            {'type': 'button', "config":"text='Submit'", "command":"command_str='self.submit_entry'", "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
+            {'type': 'button', "config":"text='Cancel'", "command":"command_str='self.cancel'", "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
+        ]
+        # We use the default result processor here, so we don't need to pass one.
+        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, modal=modal)
 
 
-    def tx_confirmation_dialog(self, sender=None, receiver=None, amount=None, is_callback=False):
-        result, disable_dialog, _ = CustomDialog(parent=self.root, 
-                                        title="Confirm Transaction", 
-                                        prompt=[
+    def tx_confirmation_dialog(self, sender, receiver, amount, modal=True, result_queue=None, on_complete=None):
+        """
+        Shows a transaction confirmation dialog. Returns a tuple:
+        (was_confirmed: bool, disable_dialog: bool).
+        Returns None if canceled.
+        """
+        # Define the UI layout for the dialog.
+        prompt = [
                                                 {'type': 'label', 
                                                  "config":"text='Are you sure you want to execute this transaction?', font='Helvetica 12 bold'", 
                                                  "grid_config":"column=0, columnspan=2"},
@@ -551,659 +872,311 @@ class Dialogs:
                                                 {'type': 'button', "config":"text='No'", 
                                                  "command":"command_str=self.cancel", 
                                                  "grid_config":"row=6, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}                                                
-                                               ], true_on_submit=True).result
+                                               ]
         
-        if is_callback:
-                self.root.stored_data.disable_tx_confirmation_dialog = disable_dialog[0]
-                self.root.stored_data.ask_string_result = result[0]
-                self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0], disable_dialog[0]
+        # Define a custom processor to handle the two return values.
+        def tx_processor(raw_result):
+            # The raw_result will be ([True], (True/False,), ()) on 'Yes'
+            # or None on 'No'/cancel.
+            if raw_result is None:
+                return None # User canceled
+
+            # Extract the data
+            was_confirmed = raw_result[0] and raw_result[0][0] is True
+            
+            # The checkbox value is in the second tuple.
+            disable_dialog = raw_result[1] and raw_result[1][0] is True
+            
+            # Return the clean, packaged tuple.
+            return (was_confirmed, disable_dialog)
+
+        # Call the helper, passing our custom processor.
+        self._create_and_run_dialog(prompt=prompt, title="Confirm Transaction", result_queue=result_queue,
+                                    on_complete=on_complete, result_processor=tx_processor, true_on_submit=True, modal=modal)
         
 
-    def input_listener_dialog(self, is_callback=False):
-        result, _, _ = CustomDialog(parent=self.root, title='Wallet Annihilation', 
-                                    prompt=[
-                                            {"type": "label",
-                                             "widget_name":"label_1",
-                                             "config":"", 
-                                             "command": "command_str='input_listener_callback', args='(self.widget_references[\"label_1\"],self.master,)', execute_on_load=True",
-                                             "binds":[{"bind_config":"event='<Unmap>', callback_str='self.cancel'"}],
-                                             "grid_config":"column=0, columnspan=2"},
-                                            
-                                            {"type": "label", 
-                                             "widget_name":"label_2",
-                                             "binds": [{"bind_config":"event='<Unmap>', callback_str='self.submit_entry'"}],
-                                             "grid_config":"row=0, column=0, columnspan=2"},
+    def input_listener_dialog(self, modal=True, result_queue=None, on_complete=None, close_event=None):
+        """
+        A universal dialog that listens for a keypress (submit) or an external
+        close_event (cancel).
+        """
+        prompt = [
+            {"type": "label",
+             "widget_name": "countdown_label",
+             "config": "text='Initializing countdown...'",
+             # This command is attached to the visible label.
+             # We pass the callback name as a string, not the result of a call.
+             "grid_config": "row=0, column=0, padx=20, pady=20",
+             "command": "command_str='start_loops', args='(self, self.widget_references[\"countdown_label\"], self.callbacks[\"get_active_listener_close_event\"])', execute_on_load=True"},
 
-                                            {"type":"self.master",
-                                             "binds":[{"bind_config":"event='<KeyRelease>', callback_str='input_listener_submit', args='(self.widget_references[\"label_2\"],)'"}]},
-                                           ], true_on_submit=True, callbacks={"input_listener_callback":self.dialog_functions.input_listener_callback, "input_listener_submit":self.dialog_functions.input_listener_submit}).result
+            {"type": "self.master",
+             "binds": [{"bind_config": "event='<KeyRelease>', callback_str='self.submit_entry'"}]},
+        ]
+
+        dialog_callbacks = {
+            "start_loops": self.dialog_functions.start_input_listener_loops,
+            "get_active_listener_close_event": self.dialog_functions.get_active_listener_close_event
+        }
         
-        self.root.stored_data.input_listener_submit = False
-        self.root.stored_data.input_listener_time_remaining = None
+        # On keypress (submit), the result is True.
+        self._create_and_run_dialog(
+            prompt=prompt,
+            title='Wallet Annihilation',
+            result_queue=result_queue,
+            on_complete=on_complete,
+            result_processor=lambda r: True, # On keypress, result is True
+            callbacks=dialog_callbacks,
+            modal=modal
+        )
+        
 
-        if is_callback:
-            self.root.stored_data.ask_bool_result = result[0]
-            self.root.wallet_thread_manager.dialog_event.set()
-        else:
-            return result[0]
-
-
-    def backup_mnemonic_dialog(self, mnemonic=None, is_callback=False):
+    def backup_mnemonic_dialog(self, mnemonic, modal=True, result_queue=None, on_complete=None):
+        """
+        Orchestrates the entire mnemonic backup workflow.
+        
+        Args:
+            modal (bool): If True, all dialogs in this workflow will block interaction
+                          with other windows.
+        """
         word_list = mnemonic.split()
-        while True:
-            result, _, _ = CustomDialog(parent=self.root, title='Recovery Phrase Backup', 
-                                        prompt=[
-                                                
-                                                #{"type":"frame", 
-                                                # "widget_name":"frame_1", 
-                                                # "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
-                                                 
-                                                {"type": "label",
-                                                 #"parent":"frame_1",
-                                                 "config":"text='The words below is the recovery phrase of the wallet.', justify='left'",
-                                                 #"pack_config":"anchor='w'"},
-                                                 "grid_config":"column=0"},
-                                                
-                                                {"type": "label",
-                                                 #"parent":"frame_1",
-                                                 "config":"text='They enable you to access your Denaro and restore your wallet.', justify='left'",
-                                                 #"pack_config":"anchor='w'"},
-                                                 "grid_config":"column=0"},
-                                                
-                                                {"type": "label",
-                                                 #"parent":"frame_1",
-                                                 "config":"text='Please write them down in the order shown.', justify='left'",
-                                                 #"pack_config":"anchor='w'"},
-                                                 "grid_config":"column=0"},
-                                                
-                                                {"type": "separator",
-                                                 "config":"orient='horizontal'",
-                                                 "grid_config":"column=0, sticky='we', pady=(5, 5)"},
 
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_2", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
+        def final_handler(result):
+            """The single point of exit for the entire workflow."""
+            if result_queue: result_queue.put(result)
+            if on_complete: on_complete(result)
 
-                                                {"type":"label", 
-                                                 "config":"text='1: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left'"}, 
-                                                 
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'", 
-                                                 "parent":"frame_2", 
-                                                 "insert":"string='{}'".format(word_list[0]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
+        def run_confirmation_step(attempt=None):
+            """Helper to start/restart the confirmation step."""
+            # Pass the modal flag down to the next step.
+            self._confirm_mnemonic_step(word_list, on_complete=handle_confirmation_result, 
+                                        previous_attempt=attempt, modal=modal)
 
-                                                {"type":"label", 
-                                                 "config":"text='2: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left'"}, 
-                                                 
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_2", 
-                                                 "insert":"string='{}'".format(word_list[1]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_3", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='3: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "insert":"string='{}'".format(word_list[2]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-                                                 
-                                                {"type":"label", 
-                                                 "config":"text='4: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "insert":"string='{}'".format(word_list[3]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_4", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='5: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "insert":"string='{}'".format(word_list[4]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='6: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "insert":"string='{}'".format(word_list[5]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_5", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='7: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "insert":"string='{}'".format(word_list[6]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='8: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "insert":"string='{}'".format(word_list[7]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_6", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='9: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "insert":"string='{}'".format(word_list[8]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='10:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "insert":"string='{}'".format(word_list[9]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_7", 
-                                                 "grid_config":"column=0, pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='11:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "insert":"string='{}'".format(word_list[10]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='12:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "insert":"string='{}'".format(word_list[11]), 
-                                                 #"variables": {"disable_context_menu_items": True},
-                                                 "pack_config":"side='left'"},
-                                                
-                                                {"type": "separator",
-                                                 "config":"orient='horizontal'",
-                                                 "grid_config":"column=0, sticky='we', pady=(15, 0)"},
-                                                
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_8", 
-                                                 "grid_config":"column=0, sticky='w', pady=(10, 0)"}, 
-                                                
-                                                {"type":"label", 
-                                                 "config":"text='', font='Helvetica 11 bold'",
-                                                 "widget_name":"copied_mnemonic_label",  
-                                                 "parent":"frame_8", 
-                                                 "pack_config":"side='right', padx=(10, 0)"}, 
-
-                                                {"type": "button", 
-                                                 "config":"text='Copy to clipboard'", 
-                                                 "parent":"frame_8", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='copy_mnemonic_to_clipboard', args='(\"{}\", self.widget_references[\"copied_mnemonic_label\"],)'".format(mnemonic)}], 
-                                                 "pack_config":"side='left'"},
-                                                
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_9", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"},
-
-                                                 {"type": "button", 
-                                                 "config":"text='Cancel'", 
-                                                 "parent":"frame_9", 
-                                                 "command":"command_str=self.cancel", 
-                                                 "pack_config":"side='left', padx=(0, 5), fill='x', expand=True"},
-
-                                                {"type": "button", 
-                                                 "config":"text='Next'", 
-                                                 "parent":"frame_9", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "pack_config":"side='left', padx=(5, 0), fill='x', expand=True"},
-                                               ], true_on_submit=True, callbacks={"copy_mnemonic_to_clipboard": self.dialog_functions.copy_mnemonic_to_clipboard}).result
-            if result[0] is None:
-                if is_callback:
-                    self.root.stored_data.ask_bool_result = False
-                    self.root.wallet_thread_manager.dialog_event.set()
-                    break
-                else:
-                    return False
-
-            if self.confirm_mnemonic_dialog(mnemonic=word_list):
-                if is_callback:
-                    self.root.stored_data.ask_bool_result = True
-                    self.root.wallet_thread_manager.dialog_event.set()
-                    break
-                else:
-                    return True
+        def handle_show_result(user_clicked_next):
+            """Called after the user views the mnemonic."""
+            if user_clicked_next:
+                run_confirmation_step()
             else:
-                if self.root.stored_data.confirm_mnemonic_back_button_press:
-                    self.root.stored_data.confirm_mnemonic_back_button_press = False
-                    continue
-                
-                if is_callback:
-                    self.root.stored_data.ask_bool_result = False
-                    self.root.wallet_thread_manager.dialog_event.set()
-                    break
-                else:
-                    return False
+                final_handler(False)
+
+        def handle_confirmation_result(result):
+            """Called after the user attempts to confirm the mnemonic."""
+            if result == "BACK":
+                # Pass the modal flag when going back to the previous step.
+                self._show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
+            elif result is True:
+                final_handler(True)
+            elif isinstance(result, list): # Incorrect attempt
+                def on_error_closed(_):
+                    # Pass the modal flag when retrying.
+                    run_confirmation_step(attempt=result)
+
+                # Pass the modal flag to the error messagebox.
+                self.messagebox(
+                    title="Error",
+                    msg="Recovery phrase is not correct.",
+                    on_complete=on_error_closed,
+                    modal=modal 
+                )
+            else: # result is None (user canceled)
+                final_handler(False)
+
+        # --- KICK OFF THE WORKFLOW ---
+        # Pass the initial modal flag to the first step.
+        self._show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
 
 
-    def confirm_mnemonic_dialog(self, mnemonic=None, is_callback=False ):
-        while True:
-            #word_list = mnemonic.split()
-            result, _, _ = CustomDialog(parent=self.root, title='Recovery Phrase Backup', 
-                                        prompt=[
-                                                {"type": "label", 
-                                                 "config":"text='Please confirm your recovery phrase.'", 
-                                                 "grid_config":"column=0"}, 
+    def _show_mnemonic_step(self, mnemonic, modal=True, on_complete=None):
+        """
+        A non-blocking step that shows the mnemonic dialog.
+        The prompt is now generated dynamically.
+        """
+        word_list = mnemonic.split()
+        
+        # --- DYNAMIC PROMPT GENERATION ---
+        prompt = [
+            {"type": "label", "config": "text='The words below is the recovery phrase of the wallet.'", "grid_config": "column=0"},
+            {"type": "label", "config": "text='They enable you to access your Denaro and restore your wallet.'", "grid_config": "column=0"},
+            {"type": "label", "config": "text='Please write them down in the order shown.'", "grid_config": "column=0"},
+            {"type": "separator", "config": "orient='horizontal'", "grid_config": "column=0, sticky='we', pady=(5, 5)"},
+        ]
 
-                                                {"type": "separator", 
-                                                 "config":"orient='horizontal'", 
-                                                 "grid_config":"column=0, sticky='we', pady=(5, 5)"}, 
+        # Loop to create the 12 read-only entry fields
+        for i in range(12):
+            word_num = i + 1
+            frame_num = (i // 2) + 2 # Puts two entries per frame
+            
+            # Create a new frame for every two entries
+            if i % 2 == 0:
+                prompt.append({"type": "frame", "widget_name": f"frame_show_{frame_num}", "grid_config": f"column=0, pady=(10, 0)"})
+            
+            # Add padding to the second item in each row for spacing
+            side_pad = 20 if i % 2 != 0 else 0
+            
+            # Label for the word number
+            prompt.append({"type": "label",
+                           "config": f"text='{word_num}: ', font='Helvetica 12 bold'",
+                           "parent": f"frame_show_{frame_num}",
+                           "pack_config": f"side='left', padx=({side_pad}, 0)"})
+            
+            # The read-only entry field with the word
+            prompt.append({
+                "type": "entry",
+                "config": "style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
+                "style_map_config": "style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
+                "parent": f"frame_show_{frame_num}",
+                "insert": f"string='{word_list[i]}'",
+                "pack_config": "side='left'"
+            })
 
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_2", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
+        # Add the final separator and action buttons
+        prompt.extend([
+            {"type": "separator", "config":"orient='horizontal'", "grid_config":"column=0, sticky='we', pady=(15, 0)"},
+            {"type": "frame", "widget_name":"frame_copy", "grid_config":"column=0, sticky='w', pady=(10, 0)"},
+            {"type": "label", "widget_name":"copied_mnemonic_label", "config":"text='', font='Helvetica 11 bold'", "parent":"frame_copy", "pack_config":"side='right', padx=(10, 0)"},
+            {"type": "button", "config":"text='Copy to clipboard'", "parent":"frame_copy",
+             "binds":[{"bind_config":f"event='<Button-1>', callback_str='copy_mnemonic_to_clipboard', args='(\"{mnemonic}\", self.widget_references[\"copied_mnemonic_label\"],)'"}],
+             "pack_config":"side='left'"},
+            
+            {"type": "frame", "widget_name":"frame_actions", "grid_config":"column=0, sticky='we', pady=(10, 0)"},
+            {"type": "button", "config":"text='Cancel'", "parent":"frame_actions", "command":"command_str=self.cancel", "pack_config":"side='left', padx=(0, 5), fill='x', expand=True"},
+            {"type": "button", "config":"text='Next'", "parent":"frame_actions", "command":"command_str=self.submit_entry", "pack_config":"side='left', padx=(5, 0), fill='x', expand=True"}
+        ])
+        
+        self._create_and_run_dialog(
+            prompt=prompt, 
+            title='Recovery Phrase Backup', 
+            on_complete=on_complete,
+            result_processor=lambda r: True, # We just need to know if they clicked Next
+            callbacks={"copy_mnemonic_to_clipboard": self.dialog_functions.copy_mnemonic_to_clipboard},
+            modal=modal
+        )
 
-                                                {"type":"label", 
-                                                 "config":"text='1: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left'"}, 
-                                                 
-                                                {"type":"entry", 
-                                                 "widget_name":"word_1", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left'"}, 
 
-                                                {"type":"button", 
-                                                 "widget_name":"word_1_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_1_toggle\"], self.widget_references[\"word_1\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_1_toggle\"], self.widget_references[\"word_1\"],)'"}], 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
+    def _confirm_mnemonic_step(self, original_word_list, modal=True, on_complete=None, previous_attempt=None):
+        """
+        A non-blocking step that asks the user to confirm the mnemonic.
+        Dynamically generates the prompt to pre-fill entries and adds a show/hide button.
+        """
+        
+        # --- DYNAMIC PROMPT GENERATION ---
+        prompt = [{"type": "label",
+                   "config":"text='Please confirm your recovery phrase.'",
+                   "grid_config":"column=0"},
 
-                                                {"type":"label", 
-                                                 "config":"text='2: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-                                                 
-                                                {"type":"entry", 
-                                                 "widget_name":"word_2", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left'"}, 
+                  {"type": "separator",
+                   "config":"orient='horizontal'",
+                   "grid_config":"column=0, sticky='we', pady=(5, 5)"}]
 
-                                                {"type":"button", 
-                                                 "widget_name":"word_2_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_2_toggle\"], self.widget_references[\"word_2\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_2_toggle\"], self.widget_references[\"word_2\"],)'"}], 
-                                                 "parent":"frame_2", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
+        # Loop to create the 12 entry fields
+        for i in range(12):
+            word_num = i + 1
+            frame_num = (i // 2) + 2
+            
+            if i % 2 == 0:
+                prompt.append({"type": "frame",
+                               "widget_name": f"frame_{frame_num}",
+                               "grid_config":f"column=0, sticky='we', pady=(10, 0)"})
+            
+            side_pad = 50 if i % 2 != 0 else 0
+            prompt.append({"type": "label",
+                           "config":f"text='{word_num}: '",
+                           "parent": f"frame_{frame_num}",
+                           "pack_config":f"side='left', padx=({side_pad}, 0)"})
 
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_3", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
+            entry_dict = {
+                "type": "entry",
+                "widget_name": f"word_{word_num}",
+                "config":"font='Helvetica 12 bold', show='*'",
+                "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}],
+                "parent": f"frame_{frame_num}", "pack_config":"side='left'"
+            }
 
-                                                {"type":"label", 
-                                                 "config":"text='3: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left'"}, 
+            if previous_attempt and i < len(previous_attempt):
+                entry_dict["insert"] = f"string='{previous_attempt[i]}'"
+            
+            prompt.append(entry_dict)
 
-                                                {"type":"entry", 
-                                                 "widget_name":"word_3", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_3_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_3_toggle\"], self.widget_references[\"word_3\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_3_toggle\"], self.widget_references[\"word_3\"],)'"}], 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='4: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_4", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_4_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_4_toggle\"], self.widget_references[\"word_4\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_4_toggle\"], self.widget_references[\"word_4\"],)'"}], 
-                                                 "parent":"frame_3", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_4", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='5: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_5", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_5_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_5_toggle\"], self.widget_references[\"word_5\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_5_toggle\"], self.widget_references[\"word_5\"],)'"}], 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='6: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_6", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_6_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_6_toggle\"], self.widget_references[\"word_6\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_6_toggle\"], self.widget_references[\"word_6\"],)'"}], 
-                                                 "parent":"frame_4", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_5", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='7: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_7", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_7_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_7_toggle\"], self.widget_references[\"word_7\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_7_toggle\"], self.widget_references[\"word_7\"],)'"}], 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='8: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_8", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_8_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_8_toggle\"], self.widget_references[\"word_8\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_8_toggle\"], self.widget_references[\"word_8\"],)'"}], 
-                                                 "parent":"frame_5", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_6", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='9: ', font='Helvetica 12 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_9", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left'"}, 
-                                                 
-                                                {"type":"button", 
-                                                 "widget_name":"word_9_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_9_toggle\"], self.widget_references[\"word_9\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_9_toggle\"], self.widget_references[\"word_9\"],)'"}], 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='10:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_10", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_10_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_10_toggle\"], self.widget_references[\"word_10\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_10_toggle\"], self.widget_references[\"word_10\"],)'"}], 
-                                                 "parent":"frame_6", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_7", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='11:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_11", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_11_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_11_toggle\"], self.widget_references[\"word_11\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_11_toggle\"], self.widget_references[\"word_11\"],)'"}], 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
-
-                                                {"type":"label", 
-                                                 "config":"text='12:', font='Helvetica 11 bold'", 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left', padx=(50, 0)"}, 
-
-                                                {"type":"entry", 
-                                                 "widget_name":"word_12", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left'"}, 
-
-                                                {"type":"button", 
-                                                 "widget_name":"word_12_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"word_12_toggle\"], self.widget_references[\"word_12\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_12_toggle\"], self.widget_references[\"word_12\"],)'"}], 
-                                                 "parent":"frame_7", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
                                                 
-                                                {"type": "separator",
-                                                 "config":"orient='horizontal'",
-                                                 "grid_config":"column=0, sticky='we', pady=(15, 0)"},
-                                                 
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_8", 
-                                                 "grid_config":"column=0, sticky='we', pady=(10, 0)"}, 
+            toggle_dict = {
+                "type": "button",
+                "widget_name": f"word_{word_num}_toggle",
+                "class": "KeyToggle",
+                "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
+                "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]",
+                "config":"style='toggle1.TButton', padding=0",
+                "command": f"command_str='set_entry_visibility', args='(self.widget_references[\"word_{word_num}_toggle\"], self.widget_references[\"word_{word_num}\"],)', execute_on_load=True, first=True",
+                "binds":[{"bind_config":f"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"word_{word_num}_toggle\"], self.widget_references[\"word_{word_num}\"],)'"}],
+                "parent": f"frame_{frame_num}", "pack_config":"side='left', padx=(5, 0)"
+            }
 
-                                                {"type": "button", 
-                                                 "config":"text='Back'", 
-                                                 "parent":"frame_8", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='confirm_mnemonic_back_button_press'"}], 
-                                                 "pack_config":"side='left', padx=(5, 5), pady=(0, 5), expand=True, fill='x'"}, 
+            prompt.append(toggle_dict)
 
-                                                {"type": "button", 
-                                                 "config":"text='Finish'", 
-                                                 "parent":"frame_8", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "pack_config":"side='left', padx=(5, 5), pady=(0, 5), expand=True, fill='x'"}, 
-                                               ], callbacks={"focus_next_widget":self.dialog_functions.focus_next_widget, "set_entry_visibility":self.dialog_functions.set_entry_visibility, "toggle_entry_visibility":self.dialog_functions.toggle_entry_visibility, "confirm_mnemonic_back_button_press": self.dialog_functions.confirm_mnemonic_back_button_press}, classes={"KeyToggle":KeyToggle}).result
-            if result[0] is None:
-                return False                
+        prompt.extend([
+            {"type": "separator",
+             "config":"orient='horizontal'",
+             "grid_config":"column=0, sticky='we', pady=(15, 0)"},
+            
+            {"type": "frame",
+             "widget_name": "frame_show_all",
+             "grid_config":"column=0, sticky='we', pady=(10, 0)"},
+           
+            {"type": "button",
+             "widget_name": "show_all_toggle",
+             "config": "text='Show All'",
+             "parent": "frame_show_all",
+             "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_all_mnemonic_visibility', args='(self.widget_references[\"show_all_toggle\"], self,)'"}],
+             "pack_config": "expand=True, fill='x'"},
+
+            {"type": "frame",
+             "widget_name": "frame_final",
+             "grid_config":"column=0, sticky='we', pady=(5, 0)"},
+
+            {"type": "button",
+             "config": "text='Back'",
+             "parent": "frame_final",
+             "command": "command_str=self.cancel",
+             "binds": [{"bind_config": "event='<Button-1>', callback_str='confirm_mnemonic_back_button_press'"}],
+             "pack_config": "side='left', expand=True, fill='x'"},
+
+            {"type": "button",
+             "config": "text='Finish'",
+             "parent": "frame_final",
+             "command": "command_str=self.submit_entry",
+             "pack_config": "side='left', padx=(5, 0), expand=True, fill='x'"}
+        ])
+        
+        def on_submit(result):
+            # First, check if the "Back" button was the source of the submission.
+            if self.root.stored_data.confirm_mnemonic_back_button_press:
+                self.root.stored_data.confirm_mnemonic_back_button_press = False # Reset the flag
+                on_complete("BACK") # Signal to the orchestrator to go back.
+                return
+            
+            if result is None:
+                on_complete(None) # Signal a full cancellation of the workflow.
+                return
+
+            entered_words = list(result[0])
+            if entered_words == original_word_list:
+                on_complete(True)
             else:
-                if self.root.stored_data.confirm_mnemonic_back_button_press:
-                    return False
-                if mnemonic != list(result):
-                    self.messagebox(title="Error", msg="Recovery phrase is not correct.")
-                    continue
-                else:
-                    return True
+                on_complete(entered_words)
+
+        dialog_callbacks = {
+            "focus_next_widget": self.dialog_functions.focus_next_widget,
+            "set_entry_visibility": self.dialog_functions.set_entry_visibility,
+            "toggle_entry_visibility": self.dialog_functions.toggle_entry_visibility,
+            "confirm_mnemonic_back_button_press": self.dialog_functions.confirm_mnemonic_back_button_press,
+            "toggle_all_mnemonic_visibility": self.dialog_functions.toggle_all_mnemonic_visibility
+        }
+
+        self._create_and_run_dialog(prompt=prompt, title='Confirm Recovery Phrase', on_complete=on_submit,
+                                    result_processor=lambda r: r,
+                                    callbacks=dialog_callbacks, classes={"KeyToggle": KeyToggle}, modal=modal)
     
-    def about_wallet_dialog(self):
+    def about_wallet_dialog(self, modal=True, result_queue=None, on_complete=None):
 
-        result, _, _ = CustomDialog(parent=self.root, title="About", 
-                                    prompt=[
+        prompt=[
 
                                     {"type":"frame", 
                                      "widget_name":"frame_1", 
@@ -1263,27 +1236,30 @@ class Dialogs:
                                      "config":"text='Close'", 
                                      "command":"command_str=self.submit_entry", 
                                      "grid_config":"row=6, column=1, sticky='e', padx=(0, 10), pady=(75, 10)"}
-                                     ], true_on_submit=True, callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink}, classes={"HyperlinkLabel":HyperlinkLabel}).result
+                                     ]
         
-    def show_2FA_QR_dialog(self, qr_window_data, from_gui=False):
+        self._create_and_run_dialog(prompt=prompt, title="About", result_queue=result_queue, on_complete=on_complete,
+            callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink},
+            classes={"HyperlinkLabel": HyperlinkLabel}, modal=modal)
+
+    def show_2FA_QR_dialog(self, qr_window_data, from_gui=False, modal=True):
         """
-        Creates and manages the 2FA QR Code dialog. This method is now the
-        unified entry point for both GUI and non-GUI modes.
+        Creates and manages the 2FA QR Code dialog. This is a non-blocking,
+        fire-and-forget dialog with a self-contained lifecycle.
         
         Args:
             qr_window_data (_2FA_QR_Dialog): The data/state object for the dialog.
             from_gui (bool): Flag indicating the execution context.
         """
         # Determine the parent window for the dialog.
-        # In GUI mode, the parent is the main application window.
-        # In non-GUI mode, the parent is None, which causes CustomDialog
-        # to create its own temporary root.
-        parent = qr_window_data.callback_object.root if from_gui else None
+        # - In GUI mode, the parent is the main application window.
+        # - In non-GUI mode, parent is None, making CustomDialog create a temp root.
+        parent = self.root if from_gui else None
 
-        # Create a controller for the dialog's logic.
-        # It's given the data object so it can read/write state.
+        # Create a controller for the dialog's specific logic.
         dialog_functions = DialogFunctions(qr_window_data, self, from_gui=from_gui)
-        # The prompt is now fully declarative and robust.
+        
+        # The prompt is fully declarative and robust.
         prompt = [
             {"type": "label",
              "widget_name": "countdown_label",
@@ -1313,7 +1289,7 @@ class Dialogs:
 
             {"type": "label",
              "widget_name": "message_label",
-             "config": "text='To enable 2FA, scan the QR code with an authenticator app, then provide the one-time code in the terminal.', wraplength=400, justify='center'",
+             "config": "text='To enable 2FA, scan the QR code with an authenticator app, then provide the one-time code.', wraplength=400, justify='center'",
              "grid_config": "row=3, column=0, columnspan=2, padx=10, pady=10"},
 
             {"type": "label",
@@ -1333,20 +1309,26 @@ class Dialogs:
             "handle_double_click": dialog_functions._2FA_handle_double_click
         }
 
-        # Create the dialog. This call is blocking due to `wait_window()`.
+        # Create the dialog. This call is now correctly non-blocking.
+        # It does not return a result and does not use the result_queue system.
         CustomDialog(
             parent=parent,
             title=f"2FA QR Code for {qr_window_data.filename}",
             prompt=prompt,
-            callbacks=callbacks
+            callbacks=callbacks,
+            modal=modal
         )
         
                 
 class DialogFunctions:
-    def __init__(self, root, parent, from_gui=False):
+    def __init__(self, root, parent, from_gui=False, dialogs_instance=None):
         self.root = root
         self.parent = parent
         self.from_gui = from_gui
+
+        self.dialogs = dialogs_instance
+        self.active_listener_close_event = None
+
 
     # address_info functions
     def set_key_visibility(self, widget=None, entry=None, first=False):
@@ -1421,7 +1403,73 @@ class DialogFunctions:
             widget.visibility_on = True
             self.set_entry_visibility(widget, entry)
             entry.config(show='')
-      
+    
+
+    def toggle_all_mnemonic_visibility(self, button=None, dialog=None, state=None):
+        """
+        Toggles the 'show' property for all 12 mnemonic entry fields at once
+        by directly setting their state, ensuring consistency.
+        """
+        # Initialize the shared visibility state on the dialog if it doesn't exist.
+        if not hasattr(dialog, 'mnemonic_entries_shown'):
+            dialog.mnemonic_entries_shown = False
+
+        # Toggle the shared state for the whole group.
+        dialog.mnemonic_entries_shown = not dialog.mnemonic_entries_shown
+
+        # Determine the target state based on the new shared state.
+        if dialog.mnemonic_entries_shown:
+            new_show_char = ''  # Show text
+            new_visibility_state = True
+            if button: button.config(text="Hide All")
+        else:
+            new_show_char = '*'  # Hide text
+            new_visibility_state = False
+            if button: button.config(text="Show All")
+
+        # Loop through all 12 entries and FORCE their state to match the new shared state.
+        for i in range(1, 13):
+            entry_widget = dialog.widget_references.get(f'word_{i}')
+            toggle_widget = dialog.widget_references.get(f'word_{i}_toggle')
+
+            if entry_widget and toggle_widget:
+                # 1. Set the entry's visibility directly.
+                entry_widget.config(show=new_show_char)
+                
+                # 2. Update the individual toggle's internal state to match.
+                toggle_widget.visibility_on = new_visibility_state
+                
+                # 3. Call set_entry_visibility to update the toggle's icon.
+                self.set_entry_visibility(widget=toggle_widget, entry=entry_widget)
+    
+    def toggle_continue_button_state(self, checkbox=None, continue_button=None):
+        """
+        The CORE LOGIC. Enables or disables a button based on a checkbox.
+        This function remains unchanged.
+        """
+        if checkbox and continue_button:
+            if checkbox.instate(['selected']):
+                continue_button.state(['!disabled'])
+            else:
+                continue_button.state(['disabled'])
+
+
+    def deferred_toggle_bridge(self, dialog_instance, state=None):
+        """
+        This function is called by the checkbox command. It receives the
+        CustomDialog instance, performs the widget lookups at runtime, and
+        then calls the core logic function.
+        """
+        try:
+            # Look up the widgets now, when the command is actually executed.
+            checkbox = dialog_instance.widget_references.get("agree_checkbox")
+            button = dialog_instance.widget_references.get("continue_button")
+            
+            # Call the original function with the resolved widgets.
+            self.toggle_continue_button_state(checkbox=checkbox, continue_button=button)
+        except Exception as e:
+            print(f"Error in deferred_toggle_bridge: {e}")
+
 
     def enable_2fa_checkbox(self, encryption_checkbox=None, _2fa_checkbox=None, state=None):
         # Get the state of the encryption checkbox
@@ -1435,41 +1483,76 @@ class DialogFunctions:
             _2fa_checkbox.state(['!selected'])
 
 
-    #input_listener_dialog functions 
-    def input_listener_callback(self, label=None, master=None, state=None):
-        master.focus_set()
-        self.root.wallet_thread_manager.start_thread("input_listener_timer", self.input_listener_timer, args=(label,),)
-        
-    
-    def input_listener_timer(self, stop_signal=None, label=None):
-        while True:            
-            #if self.root.stored_data.input_listener_submit:
-            #    return
-            if not self.root.stored_data.input_listener_submit or not (stop_signal and stop_signal.is_set()):
-                if self.root.stored_data.input_listener_time_remaining == 0:
-                    msg = f"Existing wallet data will be erased in {self.root.stored_data.input_listener_time_remaining} seconds.\nPress any key to cancel operation..."
-                    try:
-                        label.config(text=msg)
-                        label.grid_remove() 
-                    except tk.TclError:
-                        pass
-                    return       
-                
-                msg = f"Existing wallet data will be erased in {self.root.stored_data.input_listener_time_remaining} seconds.\nPress any key to cancel operation..."
-                try:
-                    label.config(text=msg)
-                except tk.TclError:
-                        pass
-            else:
+    def get_active_listener_close_event(self):
+        """Returns the stored event object for the dialog's prompt string."""
+        return self.active_listener_close_event
+
+
+    def start_input_listener_loops(self, dialog, label, get_close_event_func, first=False):
+        """
+        A single starter function that kicks off BOTH the close listener
+        and the view updater loops on the GUI thread.
+        """
+        dialog.master.focus_set()
+
+        # Call the function that was passed in to get the actual event object.
+        close_event = get_close_event_func()
+
+        # Start the loop that checks for the external close signal.
+        self.check_if_should_close_loop(dialog, close_event)
+        # Start the loop that updates the countdown text.
+        self.update_view_loop(dialog, label)
+
+
+    def check_if_should_close_loop(self, dialog, close_event):
+        """The recurring check for the controller's close signal."""
+        try:
+            if not dialog.dialog.winfo_exists(): return
+
+            if close_event.is_set():
+                dialog.cancel() # Triggers on_cancel, puts None in the queue.
                 return
 
+            dialog.dialog.after(100, lambda: self.check_if_should_close_loop(dialog, close_event))
+        except tk.TclError:
+            pass
+
+
+    def update_view_loop(self, dialog, label):
+        """
+        ## THE MISSING PIECE ##
+        The recurring loop that reads the shared timer state and updates the label.
+        """
+        try:
+            if not dialog.dialog.winfo_exists(): return
+
+            # Read the time remaining from the shared state controlled by wait_for_input.
+            time_remaining = self.root.stored_data.input_listener_time_remaining
             
-    def input_listener_submit(self, label=None, state=None):
-        self.root.stored_data.input_listener_submit = True
-        if 'input_listener_timer' in self.root.event_handler.thread_event:
-            self.root.wallet_thread_manager.stop_thread("input_listener_timer")
-        label.grid_remove()
-    
+            msg = f"Existing wallet data will be erased in {time_remaining} seconds.\nPress any key to cancel operation..."
+            label.config(text=msg)
+
+            # Schedule the next update.
+            dialog.dialog.after(100, lambda: self.update_view_loop(dialog, label))
+        except tk.TclError:
+            pass
+
+
+    def _ui_listener_thread_target(self, stop_signal, interrupt_queue):
+        """The target for the secondary worker thread (Thread B)."""
+        close_event = self.get_active_listener_close_event()
+        result = self.root.wallet_operations.callbacks.post_input_listener_dialog(close_event=close_event)
+        interrupt_queue.put(result)
+
+
+    def setup_ui_listener_thread(self, close_event, interrupt_queue):
+        """The bridge function that stores context and starts Thread B."""
+        self.active_listener_close_event = close_event
+        self.root.wallet_thread_manager.start_thread(
+            name="ui_input_listener_blocker",
+            target=self._ui_listener_thread_target,
+            args=(interrupt_queue,)
+        )
     
     def confirm_mnemonic_back_button_press(self, state=None):
         self.root.stored_data.confirm_mnemonic_back_button_press = True
@@ -1538,7 +1621,8 @@ class DialogFunctions:
         label.tag_bind(hyperlink_tag, "<Enter>", self.root.gui_utils.on_link_enter)
         label.tag_bind(hyperlink_tag, "<Leave>", self.root.gui_utils.on_link_leave)
         label.tag_bind(hyperlink_tag, "<Button-1>", lambda e, url=hyperlink_url: self.root.gui_utils.open_link(url))
-    
+
+       
     #2FA Dialog functions
     def _2FA_initial_setup(self, dialog_instance, first=None):
         if self.root.is_closing: return
@@ -1647,6 +1731,43 @@ class DialogFunctions:
             self.root.qr_img, self.root.totp_secret, self.root.tk_image
         ])
 
+    
+    def initial_page_setup(self, dialog, state=None):
+        """
+        Called once after the dialog is built. It links the PageManager to its
+        pages and the dialog instance, then shows the first page.
+        """
+        page_manager = dialog.widget_references.get('page_manager')
+        if not page_manager: return
+
+        page_manager.dialog_instance = dialog
+        page_manager.parent_window = dialog.dialog.master
+
+        for name, widget in dialog.widget_references.items():
+            if name.startswith('page_'):
+                try:
+                    page_num = int(name.replace('page_', ''))
+                    page_manager.add_page(page_num, widget)
+                except (ValueError, TypeError):
+                    continue
+        
+        page_manager.show_page(1)
+        
+
+
+    def go_to_next_page(self, dialog, state=None):
+        """Tells the page manager to show the next page."""
+        page_manager = dialog.widget_references.get('page_manager')
+        if page_manager:
+            page_manager.show_page(page_manager.current_page + 1)
+
+    def go_to_previous_page(self, dialog, state=None):
+        """Tells the page manager to show the previous page."""
+        page_manager = dialog.widget_references.get('page_manager')
+        if page_manager:
+            page_manager.show_page(page_manager.current_page - 1)
+
+
 class KeyToggle:
     def __init__(self, base_class, master=None, **kwargs):
         # Dynamically create a new class that inherits from both KeyToggle and the base_class
@@ -1654,7 +1775,6 @@ class KeyToggle:
         base_class.__init__(self, master, **kwargs)  # Initialization of the base class
         self.visibility_on = False
 
-import tkinter as tk
 
 class HyperlinkLabel:
     """
@@ -1730,4 +1850,77 @@ class HyperlinkLabel:
         """
         event.widget.config(foreground="blue", cursor="arrow")
 
-   
+
+class PageManager:
+    """
+    A custom widget class that acts as a container for multiple "pages" (frames).
+    It manages showing one page at a time.
+    """
+    def __init__(self, base_class, master=None, class_config=None, **kwargs):
+        self.__class__ = type(self.__class__.__name__, (self.__class__, base_class), {})
+        base_class.__init__(self, master, **kwargs)
+
+        self.pages = {}
+        self.current_page = 0
+        self.dialog_instance = None
+        self.parent_window = None
+
+    def add_page(self, page_num, page_frame):
+        """Adds a page (frame) to the manager's collection."""
+        self.pages[page_num] = page_frame
+        page_frame.grid(row=0, column=0, sticky="nsew")
+        page_frame.grid_remove()
+
+    def show_page(self, page_num):
+        """Shows the specified page and hides all others."""
+        if page_num in self.pages:
+            self.current_page = page_num
+            for num, page in self.pages.items():
+                if num == page_num:
+                    page.grid()
+                else:
+                    page.grid_remove()
+            
+            if self.dialog_instance:
+                self.dialog_instance.widget_references['indicators'].set_page(page_num)
+                self.dialog_instance.dialog.update_idletasks()
+                self.dialog_instance.center_dialog(self.parent_window)
+
+
+class PageIndicators:
+    """A custom widget that displays the step-by-step progress indicators."""
+    def __init__(self, base_class, master=None, class_config=None, **kwargs):
+        self.__class__ = type(self.__class__.__name__, (self.__class__, base_class), {})
+        base_class.__init__(self, master, **kwargs)
+
+        self.page_titles = class_config.get('pages', [])
+        self.indicators = []
+
+        style = ttk.Style()
+        style.configure('completed.Indicator.TLabel', background='#28a745', foreground='#ffffff')
+        style.configure('current.Indicator.TLabel', background='#2780e3', foreground='#ffffff')
+        style.configure('future.Indicator.TLabel', background='#6c757d', foreground='#ffffff')
+
+        for i, title in enumerate(self.page_titles):
+            label = ttk.Label(self, text=f"{i+1}. {title}", style='future.Indicator.TLabel',
+                              borderwidth=1, relief='solid', padding=(5, 5), anchor='center')
+            label.pack(side='left', fill='x', expand=True, in_=self)
+            self.indicators.append(label)
+
+    def set_page(self, current_page):
+        """Updates the visual state of the indicator labels."""
+
+        for i, label in enumerate(self.indicators):
+            page_num = i + 1
+            check_text = ""
+            style_name = ""
+
+            if page_num < current_page:
+                style_name = "completed.Indicator.TLabel"
+                check_text = " ✓"
+            elif page_num == current_page:
+                style_name = "current.Indicator.TLabel"
+            else:
+                style_name = "future.Indicator.TLabel"
+            
+            label.config(style=style_name, text=f"{page_num}. {self.page_titles[i]}{check_text}")

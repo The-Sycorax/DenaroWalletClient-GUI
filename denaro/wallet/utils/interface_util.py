@@ -1,7 +1,4 @@
 import os
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-import pygame
-import pygame.freetype
 import logging
 import getpass
 import shutil
@@ -13,7 +10,7 @@ import sys
 import base64
 import data_manipulation_util
 import verification_util
-
+import queue
 
 
 close_qr_window = False
@@ -25,170 +22,8 @@ if is_windows:
 else:
     import termios, fcntl
 
-# QRCode utility class
 
-
-    @staticmethod
-    def show_qr_with_timer(qr_image, filename, totp_secret):
-        """
-        Overview: Displays the QR code in a window with a timer.
-        
-        Arguments:
-        - qr_image (PIL.Image): The QR code image to display.
-        - filename (str): The filename for the caption.
-        - totp_secret (str): The TOTP secret to display.
-        
-        Returns: None
-        """
-        # Initialize pygame
-        global close_qr_window  
-        close_qr_window = False  
-        pygame.init()  
-        
-        # Set the initial dimensions of the window
-        size = 500  
-        screen = pygame.display.set_mode((size, size), pygame.RESIZABLE)  
-        pygame.display.set_caption(f'2FA QR Code for {filename}')  
-        
-        # Initialize timer and clock
-        countdown = 60  
-        clock = pygame.time.Clock()  
-        
-        # Define the activation message
-        activation_message = (
-            "To enable Two-Factor Authentication (2FA) for this wallet, scan the QR code with an authenticator app,"
-            " then provide the one-time code in the terminal.")  
-        reveal_secret = False  
-        
-        # Define constants for resizing and text
-        BASE_SIZE = 500  
-        BASE_QR_WIDTH = BASE_SIZE - 125  
-        BASE_FONT_SIZE = 24  
-        BASE_SMALL_FONT_SIZE = 22  
-        
-        # Initialize time variables
-        time_elapsed = 0 # Used to track time elapsed for countdown
-        resize_delay = 0 # Used to introduce a delay for resizing the window
-
-        # Main loop for displaying the window
-        while countdown > 0 and not close_qr_window:
-            dt = clock.tick(60) / 1000.0 # Delta time in seconds
-            time_elapsed += dt # Increment elapsed time by delta time
-
-            # If a second or more has passed reset elapsed time
-            if time_elapsed >= 1:  
-                countdown -= 1  
-                time_elapsed = 0
-            
-            # Fill the screen with a white background
-            screen.fill((255, 255, 255)) 
-
-            # For loop for event handling
-            for event in pygame.event.get():
-                # Fill the screen again within the for loop
-                screen.fill((255, 255, 255))
-                # Capture window close event
-                if event.type == pygame.QUIT:  
-                    pygame.quit()
-                    data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-                    return
-                # Capture window resize event
-                elif event.type == pygame.VIDEORESIZE:  
-                    resize_delay = 0.5
-                # Ensure button_rect maintains the correct size
-                button_rect = pygame.Rect(size - int(220 * size / BASE_SIZE), int(10 * size / BASE_SIZE), int(200 * size / BASE_SIZE), int(25 * size / BASE_SIZE))  
-                # Capture mouse click event
-                if event.type == pygame.MOUSEBUTTONDOWN:  
-                    if button_rect.collidepoint(event.pos):  
-                        reveal_secret = not reveal_secret
-
-            # Handle window resizing
-            if resize_delay > 0:  
-                resize_delay -= dt  
-                if resize_delay <= 0:  
-                    size = min(pygame.display.get_window_size())  
-                    screen = pygame.display.set_mode((size, size), pygame.RESIZABLE)  
-                    resize_delay = 0  
-            
-            # Calculate scale factor for resizing
-            scale_factor = size / BASE_SIZE  
-            
-            # Resize and display the QR code image
-            qr_width = int(BASE_QR_WIDTH * scale_factor)  
-            resized_surface = pygame.transform.scale(pygame.image.frombuffer(qr_image.convert("RGB").tobytes(), qr_image.size, 'RGB'), (qr_width, qr_width))  
-            screen.blit(resized_surface, ((size - qr_width) // 2, int(40 * scale_factor)))  
-            
-            # Draw and display the "Reveal 2FA Token" button
-            button_color = (100, 200, 100)  
-            pygame.draw.rect(screen, button_color, button_rect)  
-            font_button = pygame.font.SysFont(None, int(BASE_FONT_SIZE * scale_factor))  
-            btn_text = "Reveal 2FA Token" if not reveal_secret else "Hide 2FA Token"  
-            text_surf = font_button.render(btn_text, True, (0, 0, 0))  
-            text_rect = text_surf.get_rect(center=button_rect.center)  
-            screen.blit(text_surf, text_rect)  
-            
-            # Display the countdown timer
-            font = pygame.font.SysFont(None, int(BASE_FONT_SIZE * scale_factor))  
-            countdown_text = font.render(f"Closing window in: {countdown}s", True, (255, 0, 0))  
-            screen.blit(countdown_text, (int(10 * scale_factor), int(10 * scale_factor)))  
-            
-            # Display the TOTP secret if the "Reveal" button was clicked
-            font_secret = pygame.font.SysFont(None, int(BASE_FONT_SIZE * scale_factor))  
-            secret_text_surf = font_secret.render(totp_secret, True, (0, 0, 255))  
-            secret_text_rect = secret_text_surf.get_rect(center=(size // 2, qr_width + int(35 * scale_factor)))  
-            if reveal_secret:  
-                screen.blit(secret_text_surf, secret_text_rect)  
-            
-            # Display the activation message
-            activation_message_start_y = secret_text_rect.bottom + int(20 * scale_factor)  
-            font_small = pygame.font.SysFont(None, int(BASE_SMALL_FONT_SIZE * scale_factor))  
-            wrapped_text = QRCodeUtils.wrap_text(
-                activation_message, font_small, size - int(40 * scale_factor))  
-            for idx, line in enumerate(wrapped_text):  
-                text_line = font_small.render(line, True, (50, 50, 50))  
-                text_line_pos = text_line.get_rect(center=(size // 2, activation_message_start_y + idx * int(25 * scale_factor)))  
-                screen.blit(text_line, text_line_pos)  
-            
-            # Update the display
-            pygame.display.flip()
-
-        # Quit pygame when the countdown reaches zero or the window is closed
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
-        pygame.quit()
-
-    @staticmethod
-    def wrap_text(text, font, max_width):
-        """
-        Overview: Wraps text to fit within a given width.
-        
-        Arguments:
-        - text (str): The text to wrap.
-        - font (pygame.font.Font): The font used for measuring the text size.
-        - max_width (int): The maximum width for the text.
-
-        Returns:
-        - list: The wrapped lines of text.
-        """
-        # Split text into words
-        words = text.split(' ')          
-        # Initialize list for wrapped lines
-        lines = []        
-        # Create lines with words that fit within max_width
-        while words:  
-            line = ''  
-            while words and font.size(line + ' ' + words[0])[0] <= max_width:  
-                line = (line + ' ' + words.pop(0)).strip()  
-            lines.append(line)  
-        # Return the wrapped lines
-        data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not lines])
-        return lines 
-    
-    def close_qr_window(value):
-        global close_qr_window
-        close_qr_window = value
-
-class UserPrompts:
-    
+class UserPrompts:    
     @staticmethod
     def confirmation_prompt(msg, cli_param=False):
         """
@@ -208,6 +43,7 @@ class UserPrompts:
                 return
             else:
                 print("Invalid input.\n")  # Informs the user of invalid input and repeats the prompt
+
 
     @staticmethod
     def get_password(password=None):
@@ -239,7 +75,8 @@ class UserPrompts:
                 return password_input
             else:
                 print("Passwords do not match. Please try again.\n")
-    
+
+
     @staticmethod
     def user_input_listener(stop_event):
         """
@@ -293,74 +130,102 @@ class UserPrompts:
             # Sleep briefly to avoid busy-waiting
             time.sleep(0.1)
 
+    
     @staticmethod
-    def wait_for_input(timeout:int, from_gui=False, callback_object=None):
+    def wait_for_input(timeout: int, from_gui=False, callback_object=None):
         """
-        Overview:
-        Waits for user input for a specified time before proceeding.
-
-        Arguments:
-        - timeout (int): The number of seconds to wait for user input.
-
+        Controls a countdown timer. For GUI mode, it launches a secondary worker thread
+        to display a dialog and listen for a user interrupt, while this primary
+        thread runs the timer loop.
+    
+        This method is the "Controller" in the Controller-View pattern.
+    
+        Args:
+            timeout (int): The number of seconds to wait for user input.
+            from_gui (bool): Determines if the GUI or CLI logic is used.
+            callback_object (Callbacks): The GUI callbacks object.
+    
         Returns:
-        - bool: True if no input is received within the timeout, False otherwise.
+            bool: True if the timer completes without user input (timeout).
+                  False if the user provides input to cancel (interrupt).
         """
-        try:
-            # Initialize global variable
+        if not from_gui:
+            # --- Command-Line Interface Path ---
+            # This logic is synchronous and does not involve the GUI.
             global user_input_received
             user_input_received = False
-
-            
-
-            # Start a new thread to listen for user input
-            if from_gui:
-                callback_object.post_input_listener_dialog()
-            else:
-                # Create a threading event to stop listening for input
-                stop_event = threading.Event()
-                user_input_thread = threading.Thread(target=UserPrompts.user_input_listener, args=(stop_event,))
-                user_input_thread.start()
-
-            # Initialize timing variables
+    
+            stop_event = threading.Event()
+            user_input_thread = threading.Thread(target=UserPrompts.user_input_listener, args=(stop_event,))
+            user_input_thread.daemon = True
+            user_input_thread.start()
+    
             start_time = time.time()
-            last_second_passed = None
-
-            # Loop until timeout
-            while time.time() - start_time < timeout:
-                user_input_received = callback_object.root.stored_data.ask_bool_result
-        
-                # Check for user input
+            for i in range(timeout, -1, -1):
                 if user_input_received:
-
-                    if not from_gui:
-                        print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation... ")
-                        print('Operation canceled.')
-                        stop_event.set()
-                    return False                
-                # Countdown logic
-                seconds_passed = int(time.time() - start_time)
-                if last_second_passed != seconds_passed:
-                    last_second_passed = seconds_passed
-                    time_remaining = timeout - seconds_passed
-                    if from_gui:
-                        callback_object.root.stored_data.input_listener_time_remaining = time_remaining
-                    else:
-                        print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation...", end='')
-                time.sleep(0.1)
-            
-            callback_object.root.stored_data.input_listener_time_remaining = 0
-            
-            # Stop listening for input
-            if not from_gui:
-                stop_event.set()
-            return True
-        
-        # Handle exit on keyboard interrupt
-        except KeyboardInterrupt:
-            print(f"\rExisting wallet data will be erased in {time_remaining} seconds. Press any key to cancel operation...    ")
-            print('Operation canceled. Process terminated by user.')
+                    print('\nOperation canceled.')
+                    stop_event.set()
+                    return False  # Canceled
+    
+                print(f"\rExisting wallet data will be erased in {i} seconds. Press any key to cancel operation...", end='')
+                time.sleep(1)
+    
+            print("\nTimeout reached.")
             stop_event.set()
-            sys.exit(1)  
+            return True  # Timed out
+    
+        # --- Graphical User Interface Path ---
+        # This path uses a two-worker-thread model to satisfy all constraints.
+        # Thread A (this thread): Runs the timer loop.
+        # Thread B (launched by the manager): Blocks on the UI dialog.
+    
+        interrupt_queue = queue.Queue(maxsize=1)
+        close_dialog_event = threading.Event()
+        
+        try:
+            # 1. Ask the DialogFunctions bridge to start the secondary listener thread (Thread B).
+            #    This call is NON-BLOCKING and returns immediately. The thread manager
+            #    will create and start the new thread.
+            callback_object.root.dialogs.dialog_functions.setup_ui_listener_thread(
+                close_event=close_dialog_event,
+                interrupt_queue=interrupt_queue
+            )
+            
+            # 2. This thread (Thread A) now enters its master control loop.
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                # Check non-blockingly for an interrupt signal from Thread B.
+                if not interrupt_queue.empty():
+                    keypress_result = interrupt_queue.get()
+                    if keypress_result is True:
+                        print('Operation canceled.')
+                        # The dialog is already closed because the keypress submitted it.
+                        # We still set the event to ensure Thread B's close listener stops cleanly.
+                        close_dialog_event.set()
+                        return False  # Canceled by keypress
+    
+                # Update shared state for the dialog's label (optional).
+                # If the dialog's label were dynamic, it would read this value.
+                time_remaining = timeout - int(time.time() - start_time)
+                callback_object.root.stored_data.input_listener_time_remaining = time_remaining
+                
+                time.sleep(0.1) # Prevent this loop from consuming 100% CPU.
+    
+            # 3. If the loop finishes, the timer has expired.
+            #print("Timeout reached.")
+            
+            # 4. Signal the dialog (and the listening Thread B) to shut down.
+            #    This will cause the dialog's `check_if_should_close` loop to trigger
+            #    `dialog.cancel()`, which unblocks `post_and_wait` in Thread B.
+            close_dialog_event.set()
+            
+            return True  # Timed out
+    
+        except Exception as e:
+            print(f"An error occurred in wait_for_input: {e}")
+            # Ensure cleanup happens even on unexpected errors.
+            close_dialog_event.set()
+            return True # Fail-safe: assume timeout to prevent accidental data loss.
 
     @staticmethod
     def backup_and_overwrite_helper(data, filename, password, encrypt, backup, disable_warning, deterministic, from_gui=False, callback_object=None):
@@ -392,7 +257,7 @@ class UserPrompts:
 
         # Handle the backup preference
         if from_gui:
-            perform_backup = callback_object.post_confirmation_prompt('Backup Prompt', 'Wallet file already exists. Do you want to back it up?')
+            perform_backup = callback_object.post_confirmation_prompt('Backup Wallet', 'Wallet file already exists. Do you want to back it up?')
         else:
             perform_backup = UserPrompts.confirmation_prompt("WARNING: Wallet already exists. Do you want to back it up? [y/n] (or type '/q' to exit the script): ", backup)
 
@@ -424,7 +289,7 @@ class UserPrompts:
                 
 
                 if from_gui:
-                    perform_overwrite = callback_object.post_confirmation_prompt('Overwrite Prompt', 'You have chosen not to back up the existing wallet.\n\nProceeding will OVERWRITE the existing wallet. Do you want to Continue?')
+                    perform_overwrite = callback_object.post_confirmation_prompt('Overwrite Wallet', 'You have chosen not to back up the existing wallet.\n\nProceeding will OVERWRITE the existing wallet. Do you want to Continue?')
                 else:
                     if not backup:
                         print()
@@ -504,14 +369,14 @@ class UserPrompts:
                     if not UserPrompts.wait_for_input(timeout=10, from_gui=from_gui, callback_object=callback_object):
                         if from_gui:
                             callback_object.root.stored_data.ask_bool_result = None
-                            callback_object.root.wallet_thread_manager.dialog_event.wait()
+                            #callback_object.root.wallet_thread_manager.dialog_event.wait()
                         data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                         return
                     # If no input is recieved within 5 seconds then continue
                     else:
                         if from_gui:
                             callback_object.root.stored_data.ask_bool_result = None
-                            callback_object.root.wallet_thread_manager.dialog_event.wait()
+                            #callback_object.root.wallet_thread_manager.dialog_event.wait()
                         else:
                             print()
                         try:
@@ -536,6 +401,7 @@ class UserPrompts:
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])
                 return
     
+
     @staticmethod
     def handle_auth_error_messages(data, attempts_msg, warning_msg, warning_type, data_erased_msg, from_gui=False, callback_object=None):
         auth_error_msg = "Authentication failed or wallet data is corrupted."
@@ -557,6 +423,7 @@ class UserPrompts:
             print()
             gui_error_msg = f"{attempts_msg+new_line if attempts_msg else ''}{'WARNING: ' if warning_type == '1' else ''}{'CRITICAL: ' if warning_type == '2' else ''}{warning_msg+new_line if warning_msg else ''}{data_erased_msg+new_line if data_erased_msg else ''}{auth_error_msg}"
             callback_object.post_messagebox("Error", gui_error_msg)
+
 
     @staticmethod
     def handle_2fa_validation(data, totp_code=None, from_gui=False, callback_object=None):
@@ -580,7 +447,7 @@ class UserPrompts:
                 if not from_gui:
                     totp_code = input("Please enter the Two-Factor Authentication code from your authenticator app (or type '/q' to exit the script): ")
                 else:                    
-                    totp_code = callback_object.post_ask_string("2FA Required","Two-Factor Authentication is required.\nPlease enter the 6-digit Two-Factor Authentication code from your authenticator app:")
+                    totp_code = callback_object.post_ask_string("2FA Required","Two-Factor Authentication is required.\nPlease enter the 6-digit Two-Factor Authentication code from your authenticator app:", modal=False)
                     if totp_code == None:
                         return False
                 # Exit if the user chooses to quit
@@ -592,7 +459,7 @@ class UserPrompts:
                 if not totp_code:
                     logging.error("No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.\n")
                     if from_gui:
-                        callback_object.post_messagebox("Error", "No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.")
+                        callback_object.post_messagebox("Error", "No Two-Factor Authentication code provided. Please enter a valid Two-Factor Authentication code.", modal=False)
                     continue
                 # Validate that the TOTP code is a 6-digit integer
                 try:
@@ -600,13 +467,13 @@ class UserPrompts:
                     if len(totp_code) != 6:
                         logging.error("Two-Factor Authentication code should contain 6 digits. Please try again.\n")
                         if from_gui:
-                            callback_object.post_messagebox("Error", "Two-Factor Authentication code should contain 6 digits. Please try again.")
+                            callback_object.post_messagebox("Error", "Two-Factor Authentication code should contain 6 digits. Please try again.", modal=False)
                         totp_code = None
                         continue
                 except ValueError:
                     logging.error("Two-Factor Authentication code should be an integer. Please try again.\n")
                     if from_gui:
-                        callback_object.post_messagebox("Error", "Two-Factor Authentication code should be an integer. Please try again.")
+                        callback_object.post_messagebox("Error", "Two-Factor Authentication code should be an integer. Please try again.", modal=False)
                     totp_code = None
                     continue
             # Validate the TOTP code using utility method
@@ -617,6 +484,6 @@ class UserPrompts:
             else:
                 logging.error("Authentication failed. Please try again.\n")
                 if from_gui:
-                    callback_object.post_messagebox("Error", "Authentication failed. Please try again.")
+                    callback_object.post_messagebox("Error", "Authentication failed. Please try again.", modal=False)
                 totp_code = None
                 data_manipulation_util.DataManipulation.secure_delete([var for var in locals().values() if var is not None])

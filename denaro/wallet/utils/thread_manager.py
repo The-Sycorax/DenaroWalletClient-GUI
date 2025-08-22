@@ -11,7 +11,7 @@ class WalletThreadManager:
         self.thread_result = {}
         self.lock = threading.RLock()
         self.request_queue = queue.Queue()        
-        self.dialog_event = threading.Event()
+        #self.dialog_event = threading.Event()
 
         self._shutdown_poller = threading.Event() # Signal to stop the fallback poller
 
@@ -30,16 +30,48 @@ class WalletThreadManager:
             poller_thread.start()
 
 
+    def post_and_wait(self, target_callable):
+        """
+        Posts a request to the GUI thread and waits for a result.
+        This is the centralized, thread-safe way to get a return value from a GUI operation.
+
+        Args:
+            target_callable (function): A function (often a lambda) that takes a single
+                                        argument: `result_queue`. This function will be
+                                        executed on the GUI thread.
+        
+        Returns:
+            The result put into the queue by the target_callable.
+        """
+        # 1. Create a unique queue for this specific request.
+        result_queue = queue.Queue(maxsize=1)
+
+        # 2. Wrap the user's callable in a new lambda that injects the queue.
+        #    The `dialogs.ask_string` function will now receive the queue.
+        request_wrapper = lambda: target_callable(result_queue=result_queue)
+
+        # 3. Put the wrapped request on the main processing queue for the GUI thread.
+        self.request_queue.put(request_wrapper)
+
+        # 4. Block this (worker) thread and wait for the result.
+        result = result_queue.get()
+
+        # 5. Return the result to the original caller (e.g., post_ask_string).
+        return result
+
     def process_gui_requests(self):
-        """Processes the queue and reschedules itself using root.after(). GUI-safe."""
+        """Processes the queue and reschedules itself. GUI-safe."""
         while not self.request_queue.empty():
-            request = self.request_queue.get_nowait()
             try:
+                # Get the wrapped request (e.g., `lambda: target_callable(result_queue=result_queue)`)
+                request = self.request_queue.get_nowait()
+                # Execute it. This runs the `dialogs.ask_string(...)` on the GUI thread.
                 request()
+            except queue.Empty:
+                pass # This can happen in rare race conditions, it's safe to ignore.
             except Exception as e:
                 print(f"Error executing request from queue: {e}")
         
-        # Reschedule with the root's event loop
         self.root.after(100, self.process_gui_requests)
 
     def process_poller_requests(self):

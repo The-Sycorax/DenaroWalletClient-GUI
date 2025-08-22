@@ -125,7 +125,7 @@ class QRCodeUtils:
     #    root.mainloop()
 
 class _2FA_QR_Dialog():
-    def __init__(self, qr_img, filename, totp_secret, from_gui=False, callback_object=None):
+    def __init__(self, qr_img, filename, totp_secret, from_gui=False, callback_object=None, modal=True):
         """
         Initializes the 2FA QR dialog. It can either be managed by an
         external GUI or run its own threaded process for terminal-based execution.
@@ -150,6 +150,8 @@ class _2FA_QR_Dialog():
         self.context_menu = None
         self.data_manipulation_util = DataManipulation
 
+        self.modal = modal
+
         # --- DUAL MODE LOGIC ---
         if self.from_gui:
             pass
@@ -159,7 +161,7 @@ class _2FA_QR_Dialog():
             self.wallet_thread_manager = WalletThreadManager(self)
             self.dialogs = Dialogs(self)
             self.callbacks = Callbacks(self) # A simple Callbacks class for non-GUI mode
-            self.callbacks.post_2FA_QR_dialog()
+            self.callbacks.post_2FA_QR_dialog(modal=modal)
 
 
 # A simple Callbacks class for non-GUI mode.
@@ -167,10 +169,10 @@ class Callbacks:
     def __init__(self, root):
         self.root = root
 
-    def post_2FA_QR_dialog(self):
+    def post_2FA_QR_dialog(self, modal=True):
         self.root.wallet_thread_manager.request_queue.put(
             lambda: self.root.dialogs.show_2FA_QR_dialog(
                 qr_window_data=self.root, # In this context, self.root IS the data object
-                from_gui=False
+                from_gui=False, modal=modal
             )
         )

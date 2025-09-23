@@ -49,7 +49,12 @@ class BasePage(ttk.Frame):
 class AccountPage(BasePage):
     def __init__(self, parent, root):
         super().__init__(parent, root)
-        self.column_sort_order = {"Balance": False, "Pending": False, "Value": False}
+        
+        if self.root.disable_exchange_rate_features:
+            self.column_sort_order = {"Balance": False, "Pending": False}
+        else:
+            self.column_sort_order = {"Balance": False, "Pending": False, "Value": False}
+
         self.create_widgets()  # Create and place widgets
         self.configure_layout() # Configure the grid layout of the AccountPage
         # Dynamically identify selectable widgets
@@ -72,9 +77,14 @@ class AccountPage(BasePage):
         self.logo_container.grid(row=0, column=0, rowspan=2, sticky='nw')
     
         # Balance and value labels
-        self.denaro_price_text.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
-        self.total_balance_text.grid(row=1, column=1, sticky='nw', padx=5,)
-        self.total_value_text.grid(row=1, column=1, sticky='sw', padx=5, pady=(0, 5))
+        
+
+        if self.root.disable_exchange_rate_features:
+            self.total_balance_text.grid(row=0, column=1, sticky='nw', padx=5,)
+        else:
+            self.denaro_price_text.grid(row=0, column=1, sticky='nw', padx=5, pady=5)
+            self.total_balance_text.grid(row=1, column=1, sticky='nw', padx=5,)
+            self.total_value_text.grid(row=1, column=1, sticky='sw', padx=5, pady=(0, 5))
 
         # Accounts frame
         self.accounts_frame.grid_columnconfigure(0, weight=1)
@@ -103,15 +113,21 @@ class AccountPage(BasePage):
         self.logo_label.pack(padx=1, pady=1)  # Padding inside the container
         
         #Balance and value labels
-        self.denaro_price_text = tb.Label(self.balance_frame, text="DNR/USD Price:", foreground='white', background='black')        
         self.total_balance_text = tb.Label(self.balance_frame, text="Total balance:", foreground='white', background='black')
-        self.total_value_text = tb.Label(self.balance_frame, text="Total Value:", foreground='white', background='black')
+        
+        if not self.root.disable_exchange_rate_features:
+            self.denaro_price_text = tb.Label(self.balance_frame, text="DNR/USD Price:", foreground='white', background='black')        
+            self.total_value_text = tb.Label(self.balance_frame, text="Total Value:", foreground='white', background='black')
 
         # Accounts frame
         self.accounts_frame = tb.Frame(self)
         
         # TreeView and scrollbar
-        self.columns = ("Address", "Balance", "Pending", "Value")
+        if self.root.disable_exchange_rate_features:
+            self.columns = ("Address", "Balance", "Pending")
+        else:
+            self.columns = ("Address", "Balance", "Pending", "Value")
+            
         self.accounts_tree = ttk.Treeview(self.accounts_frame, columns=self.columns, show='headings', selectmode='browse')
         self.accounts_tree_scrollbar = ttk.Scrollbar(self.accounts_frame, orient="vertical", command=self.accounts_tree.yview)
         self.accounts_tree.configure(yscrollcommand=self.accounts_tree_scrollbar.set)
@@ -134,7 +150,12 @@ class AccountPage(BasePage):
         self.accounts_tree.tag_configure('oddrow', background='white')  # Light gray color for odd rows
         self.accounts_tree.tag_configure('evenrow', background='#cee0e7')  # A slightly different shade for even row 
         
-        for col in ["Balance", "Pending", "Value"]:
+        if self.root.disable_exchange_rate_features:
+            heading_names = ["Balance", "Pending"]
+        else:
+            heading_names = ["Balance", "Pending", "Value"]
+        
+        for col in heading_names:
             self.accounts_tree.heading(col, text=col+" ⥮", command=lambda _col=col: self.root.gui_utils.sort_treeview_column(self.accounts_tree, _col))
      
         # Refresh balance button
@@ -370,10 +391,11 @@ class SettingsPage(BasePage):
 
     def configure_layout(self):
         # Position the currency code related widgets
-        self.currency_code_inner_frame.grid(row=0, column=0, sticky='ew', padx=10)
-        self.currency_code_label.pack(side='left', padx=5, pady=5)
-        self.currency_code_combobox.pack(side='left', padx=5, pady=5)
-        self.valid_currency_code.pack(side='left', padx=5, pady=5)
+        if not self.root.disable_exchange_rate_features:
+            self.currency_code_inner_frame.grid(row=0, column=0, sticky='ew', padx=10)
+            self.currency_code_label.pack(side='left', padx=5, pady=5)
+            self.currency_code_combobox.pack(side='left', padx=5, pady=5)
+            self.valid_currency_code.pack(side='left', padx=5, pady=5)
 
         # Position the Denaro Node widgets within the denaro_node_frame
         self.denaro_node_frame.grid(row=1, column=0, sticky='w', padx=15, pady=10, ipady=5)        
@@ -406,31 +428,32 @@ class SettingsPage(BasePage):
         # Settings Page Layout
         #######################################################################################        
         #Currency code
-        self.currency_code_inner_frame = tb.Frame(self)
-        self.currency_code_label = tb.Label(self.currency_code_inner_frame, text="Default Currency:")  
-        self.valid_currency_code = tb.Label(self.currency_code_inner_frame)
-
-        #Initialize currency code function
-        wallet_client.is_valid_currency_code()
-        
-        #Get list of valid codes
-        self.currency_codes = list(wallet_client.is_valid_currency_code.valid_codes.keys())
- 
-        # Create custom Combobox
-        self.currency_code_combobox = AutocompleteCombobox(self.currency_code_inner_frame, width=20, completevalues=self.currency_codes, state='normal')        
-        
-        # Add separators at specific indices
-        self.separators = ["--- Fiat Currencies ---", "--- Crypto Currencies ---"]        
-        self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[0], 0)  # Adds the first separator
-        self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[1], 162)  # Adds the second separator        
-        self.currency_code_combobox.current(147)
-        self.last_valid_selection = self.currency_code_combobox.current()        
-        self.currency_code_combobox.bind('<<ComboboxSelected>>', self.root.gui_utils.on_currency_code_combobox_select)
-        
-        # Validate currency code on init
-        self.after(100, self.validate_currency_code)
-        #Validate currency code on each write
-        self.currency_code_combobox.var.trace_add("write", self.validate_currency_code)
+        if not self.root.disable_exchange_rate_features:
+            self.currency_code_inner_frame = tb.Frame(self)
+            self.currency_code_label = tb.Label(self.currency_code_inner_frame, text="Default Currency:")  
+            self.valid_currency_code = tb.Label(self.currency_code_inner_frame)
+    
+            #Initialize currency code function
+            wallet_client.is_valid_currency_code()
+            
+            #Get list of valid codes
+            self.currency_codes = list(wallet_client.is_valid_currency_code.valid_codes.keys())
+    
+            # Create custom Combobox
+            self.currency_code_combobox = AutocompleteCombobox(self.currency_code_inner_frame, width=20, completevalues=self.currency_codes, state='normal')        
+            
+            # Add separators at specific indices
+            self.separators = ["--- Fiat Currencies ---", "--- Crypto Currencies ---"]        
+            self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[0], 0)  # Adds the first separator
+            self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[1], 162)  # Adds the second separator        
+            self.currency_code_combobox.current(147)
+            self.last_valid_selection = self.currency_code_combobox.current()        
+            self.currency_code_combobox.bind('<<ComboboxSelected>>', self.root.gui_utils.on_currency_code_combobox_select)
+            
+            # Validate currency code on init
+            self.after(100, self.validate_currency_code)
+            #Validate currency code on each write
+            self.currency_code_combobox.var.trace_add("write", self.validate_currency_code)
 
         self.denaro_node_frame = tb.LabelFrame(self, text="Denaro Node Config:",width=20)
         self.denaro_node_address_label = tb.Label(self.denaro_node_frame, text="Address")        
@@ -568,21 +591,29 @@ class SettingsPage(BasePage):
     def check_setting_changes(self):
         # Checks for changes in settings compared to the current configuration
         current_config = self.root.config_handler.config_values
+        
+        if not self.root.disable_exchange_rate_features:
+            currency_code = self.currency_code_combobox.get().strip()
 
-        currency_code = self.currency_code_combobox.get().strip()
         node_address = self.denaro_node_address_entry.get().strip()
         node_port = self.denaro_node_port_entry.get().strip()
 
         # Construct the address:port string conditionally including the port
         node = f"{node_address}:{node_port}" if node_port else node_address
         node_validation = not self.disable_node_validation_var.get()
+        
+        if not self.root.disable_exchange_rate_features:
+            currency_code_changed = (currency_code != current_config.get('default_currency'))
 
-        currency_code_changed = (currency_code != current_config.get('default_currency'))
         node_changed = (node != current_config.get('default_node', ''))
         node_validation_changed = (str(node_validation) != current_config.get('node_validation', ''))
         #fields_empty = not node_address  # Only check if address is empty since port is optional
         #print(currency_code_changed, node_changed, not fields_empty)
-        settings_changed = self.currency_code_valid and (currency_code_changed or node_changed or node_validation_changed) and not self.keep_save_button_disabled
+        
+        if self.root.disable_exchange_rate_features:
+            settings_changed = (node_changed or node_validation_changed) and not self.keep_save_button_disabled
+        else:
+            settings_changed = self.currency_code_valid and (currency_code_changed or node_changed or node_validation_changed) and not self.keep_save_button_disabled
         return settings_changed
     
 
@@ -606,6 +637,8 @@ class DenaroWalletGUI(tk.Tk):
         self.current_page = None
         self.selectable_widgets = []
         self.active_button = None
+        self.disable_exchange_rate_features = True
+
         self.styles = tb.Style()
         self.stored_data = StoredData()
         self.gui_utils = GUIUtils(self)
@@ -615,9 +648,8 @@ class DenaroWalletGUI(tk.Tk):
         self.dialogs = Dialogs(self)
         self.custom_popup = CustomPopup(self)
         self.config_handler = ConfigHandler(self)
-
-        self.create_menus()
-             
+        
+        self.create_menus()             
         self.configure_styles()
         self.create_main_content_area()
         self.create_sidebar()
@@ -848,14 +880,21 @@ class ConfigHandler:
 
     def __init__(self, root):
         self.root = root
-        self.config_values = wallet_client.read_config(disable_err_msg = True)        
+        self.config_values = wallet_client.read_config(disable_err_msg = True)
+        
+        if self.config_values.get('disable_exchange_rate_features') == "True":
+            self.root.disable_exchange_rate_features = True
+        if self.config_values.get('disable_exchange_rate_features') == "False":
+            self.root.disable_exchange_rate_features = False
+
 
     def update_config_values(self):  
         if self.config_values:
-            if 'default_currency' in self.config_values:
-                self.root.stored_data.currency_code = self.config_values.get('default_currency')
-                self.root.settings_page.currency_code_combobox.set(self.root.stored_data.currency_code)
-                self.root.settings_page.validate_currency_code()
+            if not self.root.disable_exchange_rate_features:
+                if 'default_currency' in self.config_values:
+                    self.root.stored_data.currency_code = self.config_values.get('default_currency')
+                    self.root.settings_page.currency_code_combobox.set(self.root.stored_data.currency_code)
+                    self.root.settings_page.validate_currency_code()
             
             if 'default_node' in self.config_values:
                 default_node = self.config_values.get('default_node')
@@ -896,9 +935,9 @@ class ConfigHandler:
         if string_valid:
             # Configuration saving logic needs to consider the optional port in validation
             if self.root.settings_page.check_setting_changes():
-
-                if self.config_values['default_currency'] != self.root.stored_data.currency_code:
-                    self.config_values['default_currency'] = self.root.stored_data.currency_code
+                if not self.root.disable_exchange_rate_features:
+                    if self.config_values['default_currency'] != self.root.stored_data.currency_code:
+                        self.config_values['default_currency'] = self.root.stored_data.currency_code
                 
                 if self.config_values['default_node'] != node:
                     self.config_values['default_node'] = node
@@ -973,7 +1012,8 @@ class EventHandler:
             if self.root.stored_data.operation_mode is None:
                 self.update_status_bar("Getting Balance Data")
         else:
-            self.set_currency_combobox_state('normal')
+            if not self.root.disable_exchange_rate_features:
+                self.set_currency_combobox_state('normal')
 
         if self.root.stored_data.wallet_deleted:
             self.root.stored_data.operation_mode = None
@@ -985,7 +1025,10 @@ class EventHandler:
                 self.root.wallet_thread_manager.stop_thread("input_listener_timer") 
         
         self.update_operation_mode_status()
-        self.update_price_timer()
+
+        if not self.root.disable_exchange_rate_features:
+            self.update_price_timer()
+
         self.root.after(100, self.event_listener)
 
     def progress_bar_listener(self):
@@ -1024,7 +1067,8 @@ class EventHandler:
         if 'load_balance' not in self.thread_event:
             self.update_wallet_load_balance_state()
         else:
-            self.set_currency_combobox_state('disabled')
+            if not self.root.disable_exchange_rate_features:
+                self.set_currency_combobox_state('disabled')
 
         if 'create_wallet' not in self.thread_event:
             if 'generate_address' not in self.thread_event:
@@ -1577,12 +1621,15 @@ class GUIUtils:
                 except ValueError:
                     # If conversion fails, print an error and skip this value
                     continue
-            elif col == "Value":
-                try:
-                    # Remove the "$" and commas, then convert to float for "Value"
-                    numeric_value = float(value.replace(self.root.stored_data.currency_symbol, "").replace(",", ""))
-                except ValueError:
-                    continue
+            
+            if not self.root.disable_exchange_rate_features:
+                if col == "Value":
+                    try:
+                        # Remove the "$" and commas, then convert to float for "Value"
+                        numeric_value = float(value.replace(self.root.stored_data.currency_symbol, "").replace(",", ""))
+                    except ValueError:
+                        continue
+            
             # Append the numeric value along with the item's ID for sorting
             l.append((numeric_value, k))
         
@@ -1605,7 +1652,12 @@ class GUIUtils:
         tree.heading(col, text=f"{base_name}{sort_order_char}", command=lambda _col=col: self.sort_treeview_column(tree, _col))
     
         # Reset other column headings to remove sort indicators
-        for col_name in ["Balance", "Pending", "Value"]:
+        if self.root.disable_exchange_rate_features:
+            heading_names = ["Balance", "Pending"]
+        else:
+            heading_names = ["Balance", "Pending", "Value"]
+
+        for col_name in heading_names:
             if col_name != col:
                 # Retrieve the original heading without sort order indicator
                 other_heading = tree.heading(col_name)['text']
@@ -1903,20 +1955,24 @@ class WalletOperations:
     def load_balance(self):
         self.root.account_page.refresh_balance_button.config(state='disabled')
 
-        current_heading = self.root.account_page.accounts_tree.heading('Value')['text']        
-        if " ↾" in current_heading or " ⇂" in current_heading or " ⥮" in current_heading:
-            base_name = current_heading[-7:]
-        else:
-            base_name = "Value"
+        if not self.root.disable_exchange_rate_features:
+            current_heading = self.root.account_page.accounts_tree.heading('Value')['text']
+            if " ↾" in current_heading or " ⇂" in current_heading or " ⥮" in current_heading:
+                base_name = current_heading[-7:]
+            else:
+                base_name = "Value"
 
-        self.root.account_page.accounts_tree.heading('Value', text=f"{self.root.stored_data.currency_code} {base_name}")
-        title_width = self.root.account_page.treeview_font.measure(f"{self.root.stored_data.currency_code} {base_name}") + 30  # Extra space for padding
-        #self.root.account_page.column_min_widths["Value"] = title_width
-        self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
+            self.root.account_page.accounts_tree.heading('Value', text=f"{self.root.stored_data.currency_code} {base_name}")
 
-        self.root.account_page.total_value_text.config(text=f"Total {self.root.stored_data.currency_code} Value:")
+            title_width = self.root.account_page.treeview_font.measure(f"{self.root.stored_data.currency_code} {base_name}") + 30  # Extra space for padding
+            #self.root.account_page.column_min_widths["Value"] = title_width
+            self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
+    
+            self.root.account_page.total_value_text.config(text=f"Total {self.root.stored_data.currency_code} Value:")
+        
+            self.root.settings_page.currency_code_combobox.config(state='disabled')
+
         self.root.account_page.total_balance_text.config(text=f"Total Balance:")
-        self.root.settings_page.currency_code_combobox.config(state='disabled')
         
         self.root.progress_bar.config(maximum=0,value=0)
         self.root.wallet_thread_manager.start_thread("load_balance", self.get_balance_data, args=(self.root.stored_data.wallet_file,), )
@@ -1929,7 +1985,7 @@ class WalletOperations:
         self.root.event_handler.stop_getting_balance = stop_signal
         if self.root.stored_data.wallet_data:
             node, _ , _ = self.root.settings_page.validate_node_fields()
-            self.root.stored_data.balance_loaded = wallet_client.checkBalance(file_path, password=None, node=node, to_json=True, currency_code=self.root.stored_data.currency_code, currency_symbol=self.root.stored_data.currency_symbol, address_data=json.dumps(self.root.stored_data.wallet_data), from_gui=True, callback_object=self.callbacks,stop_signal=stop_signal)
+            self.root.stored_data.balance_loaded = wallet_client.checkBalance(file_path, password=None, node=node, to_json=True, currency_code=self.root.stored_data.currency_code if not self.root.disable_exchange_rate_features else "", currency_symbol=self.root.stored_data.currency_symbol if not self.root.disable_exchange_rate_features else "", address_data=json.dumps(self.root.stored_data.wallet_data), from_gui=True, callback_object=self.callbacks,stop_signal=stop_signal)
             
 
     def update_balance_data(self, balance_data=None, stop_signal=None):
@@ -1939,17 +1995,25 @@ class WalletOperations:
     
             def process_entries(entry):
                 address = entry['address']
-                currency = entry['balance']['currency']
                 amount = entry['balance']['amount']
-                value = entry['balance'][f'{self.root.stored_data.currency_code.lower()}_value']
                 pending_balance = entry['balance']['pending_balance']
+                
+                if not self.root.disable_exchange_rate_features:
+                    currency = entry['balance']['currency']
+                    value = entry['balance'][f'{self.root.stored_data.currency_code.lower()}_value']
 
                 if address in treeview_items:
                     # Update existing entry
-                    accounts_tree.item(treeview_items[address], values=(address, f"{amount} {currency}", f"{pending_balance} {currency}", value))
+                    if self.root.disable_exchange_rate_features:
+                        accounts_tree.item(treeview_items[address], values=(address, f"{amount} DNR", f"{pending_balance} DNR"))
+                    else:
+                        accounts_tree.item(treeview_items[address], values=(address, f"{amount} {currency}", f"{pending_balance} {currency}", value))
                 else:
                     # Insert new entry
-                    accounts_tree.insert('', tk.END, values=(address, f"{amount} {currency}", f"{pending_balance} {currency}", value))
+                    if self.root.disable_exchange_rate_features:
+                        accounts_tree.insert('', tk.END, values=(address, f"{amount} DNR", f"{pending_balance} DNR"))
+                    else:
+                        accounts_tree.insert('', tk.END, values=(address, f"{amount} {currency}", f"{pending_balance} {currency}", value))
                 if stop_signal.is_set():
                     return
 
@@ -1961,7 +2025,9 @@ class WalletOperations:
                 process_entries(list(balance_data["balance_data"]['imported_addresses'])[-1])
             
             self.root.account_page.total_balance_text.config(text=f"Total Balance: {self.root.stored_data.total_balance} DNR")
-            self.root.account_page.total_value_text.config(text=f"Total {self.root.stored_data.currency_code} Value: {self.root.stored_data.total_balance_value}")
+            
+            if not self.root.disable_exchange_rate_features:
+                self.root.account_page.total_value_text.config(text=f"Total {self.root.stored_data.currency_code} Value: {self.root.stored_data.total_balance_value}")
     
 
     #Gets DNR Price
@@ -2358,8 +2424,11 @@ class Callbacks:
         self.root.send_page.message_entry_text.set('')
 
         self.root.account_page.total_balance_text.config(text=f"Total Balance:")
-        self.root.account_page.total_value_text.config(text=f"Total Value:")
-        self.root.account_page.accounts_tree.heading('Value', text=f"Value")
+        
+        if not self.root.disable_exchange_rate_features:
+            self.root.account_page.total_value_text.config(text=f"Total Value:")
+            self.root.account_page.accounts_tree.heading('Value', text=f"Value")
+        
         self.root.progress_bar.config(maximum=0,value=0)
 
                 # Remove existing sort order indicator if present
@@ -2375,7 +2444,9 @@ class Callbacks:
             self.root.account_page.accounts_tree.heading(column, text=base_name)
             title_width = self.root.account_page.treeview_font.measure(base_name) + 20  # Extra space for padding
             self.root.account_page.column_min_widths[column] = title_width
-        self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
+        
+        if not self.root.disable_exchange_rate_features:
+            self.root.account_page.accounts_tree.column('Value', minwidth=title_width, stretch=tk.YES)
 
 
 @dataclass

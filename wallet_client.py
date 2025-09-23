@@ -1495,12 +1495,19 @@ def read_config(config_path='settings.cfg', disable_err_msg = False):
     - dict: The configuration as a dictionary, or None if the file is not found or contains invalid JSON.
     """
     if not os.path.exists(config_path):
-        config = {"default_node": "https://denaro-node.gaetano.eu.org", "node_validation": "True", "default_currency": "USD"}
+        config = {"default_node": "https://denaro-node.gaetano.eu.org", "node_validation": "True", "default_currency": "USD", "disable_exchange_rate_features": "True"}
         write_config(config=config)
 
     try:
         with open(config_path, 'r') as config_file:
-            return json.load(config_file)  # Loads and returns the configuration as a dictionary
+            config_values = json.load(config_file)
+            
+            if not 'disable_exchange_rate_features' in config_values:
+                config_values['disable_exchange_rate_features'] = "True"
+                write_config(config=config_values)
+        
+            return config_values  # Loads and returns the configuration as a dictionary
+        
     except FileNotFoundError:
         if not disable_err_msg:
             logging.error(" Config file not found. Please initialize the configuration using 'set-config'.")
@@ -1681,14 +1688,18 @@ def checkBalance(filename, password, totp_code=None, address = [], node = None, 
             if "generated" in show:
                 if "imported_entries" in entry_data:
                     del entry_data["imported_entries"]
-                            
-        # Get price data and convert to Decimal
-        formatted_price = get_price_info(currency_code)
-        if formatted_price:
-            formatted_price = Decimal(str(formatted_price))
-        else:
+
+        # No need to get price data if disable_exchange_rate_features is True
+        if from_gui and callback_object.root.disable_exchange_rate_features:
             formatted_price = Decimal('0')
-            
+        else:
+            # Get price data and convert to Decimal
+            formatted_price = get_price_info(currency_code)
+            if formatted_price:
+                formatted_price = Decimal(str(formatted_price))
+            else:
+                formatted_price = Decimal('0')
+                
             #currency_code = "USD"
             #currency_symbol = "$"
         

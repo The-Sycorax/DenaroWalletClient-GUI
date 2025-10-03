@@ -7,6 +7,7 @@
 
 **Github repo for the Denaro cryptocurrency: https://github.com/denaro-coin/denaro**
 
+![screenshot](screenshot.png "GUI Screenshot")
 
 ## Installation Guide
 *Note: The Denaro Wallet Client has not been tested on Windows or MacOS and support is unknown at this time. It is reccomended to use the wallet client on Ubuntu/Debian Linux to avoid any compatibility or stability issues.*

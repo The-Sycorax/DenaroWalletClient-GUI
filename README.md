@@ -247,7 +247,7 @@ deactivate
                 
                 * `-message`: Optional transaction message.
         
-            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (https://denaro-node.gaetano.eu.org/).
+            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
         
         </dd></dl>
         </details>
@@ -284,7 +284,7 @@ deactivate
             * `-json`: Prints the balance information in JSON format.
             * `-to-file`: Saves the output of the balance information to a file. The resulting file will be in JSON format and named as "*[WalletName]​_balance_[Timestamp].json*" and will be stored in "*/[WalletDirectory]/balance_information/[WalletName]/*".    
            
-            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (https://denaro-node.gaetano.eu.org/).
+            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
         
         </dd></dl>
         </details>

@@ -12,6 +12,7 @@ import ast
 from tkinter import font 
 from tktooltip import ToolTip
 import uuid
+import contextlib
 
 class CustomDialog:
     def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, on_submit=None, on_cancel=None, modal=True, eval_context=None, **kwargs):
@@ -192,125 +193,132 @@ class CustomDialog:
             self.dialog.geometry(f"+{expected_x}+{expected_y}")
 
     def create_widget(self, widget_type, widget_parent, row, grid_config, pack_config, item, item_index, widget_id):
-        widget_map = {
-            'separator': tb.Separator,
-            'label': tb.Label,
-            'entry': tb.Entry,
-            'textarea': tk.Text,
-            'button': tb.Button,
-            'checkbox': tb.Checkbutton,
-            'scrolledtext': scrolledtext.ScrolledText,
-            'radiobutton': tb.Radiobutton,
-            'combobox': tb.Combobox,
-            'spinbox': tb.Spinbox,
-            'progressbar': tb.Progressbar,
-            'scale': tb.Scale,
-            'listbox': tk.Listbox,
-            'canvas': tk.Canvas,
-            'frame': tb.Frame,
-            'labelframe': tb.Labelframe,
-            'panedwindow': tb.PanedWindow,
-            'notebook': tb.Notebook,
-            'treeview': tb.Treeview,
-            'menubutton': tb.Menubutton,
-            'message': tk.Message,
-            'checkbutton': tb.Checkbutton,
-            'radiobutton': tb.Radiobutton,
-            'self.dialog': self.dialog,
-            'self.master': self.master
-        }
-        
-        custom_class_name = item.get('class')
-        
-        if custom_class_name and custom_class_name in self.classes:
-            widget_class = self.classes.get(custom_class_name)
-            #widget_class = self.classes[custom_class_name](widget_map[widget_type])
-        else:
-            widget_class = widget_map.get(widget_type)
-            
-        #widget_class = widget_map.get(widget_type)
-        if widget_class:
-            widget_config = self.parse_config_string(item.get('config', ''))
-            
 
-            # Handle special cases for widgets with additional setup
-            if widget_type in ['entry', 'textarea', 'scrolledtext']: 
-                if custom_class_name and custom_class_name in self.classes:
-                    class_config = None
-                    if "class_config" in item:
-                        class_config = self.parse_config_string(item.get('class_config',''))
-                    
-                    widget = widget_class(widget_map[widget_type], master=widget_parent, config=class_config)
-                else:
-                    widget = widget_class(widget_parent)
-
-                if widget_type == 'entry':
-                    
-                    var = tk.StringVar()
-                    self.entry_variables[item_index] = var
-                    widget.config(textvariable=var)
-                    #widget.focus_set()
+        should_translate = item.get('translate', True)
                 
-                insert_config = self.parse_config_string(item.get('insert', ''))
+        # Choose the context: either disable translation or do nothing.
+        context = self.dialog.master.translation_engine.no_translate() if self.dialog.master and self.dialog.master.translation_engine and not should_translate else contextlib.nullcontext()
 
-                if insert_config:
-                    widget.insert(tk.END, **insert_config)
-                    
-                    if widget_type == 'entry':
-                        if self.variable_manager.has_variable(widget_id, 'expand_entry_width'):
-                            if self.variable_manager.has_variable(widget_id, 'entry_max_width'):
-                                max_width = self.variable_manager.get_variable(widget_id, 'entry_max_width')
-                            else:
-                                max_width = 70
-                            text_width = self.update_entry_width(widget, font_string=widget_config.get('font'))    
-                            widget.config(width=text_width)
-
-                    if widget_type == 'textarea' or widget_type == 'scrolledtext':
-                        line_count = int(widget.index('end-1c').split('.')[0])
-                        widget.config(height=line_count)
+        with context:
+            widget_map = {
+                'separator': tb.Separator,
+                'label': tb.Label,
+                'entry': tb.Entry,
+                'textarea': tk.Text,
+                'button': tb.Button,
+                'checkbox': tb.Checkbutton,
+                'scrolledtext': scrolledtext.ScrolledText,
+                'radiobutton': tb.Radiobutton,
+                'combobox': tb.Combobox,
+                'spinbox': tb.Spinbox,
+                'progressbar': tb.Progressbar,
+                'scale': tb.Scale,
+                'listbox': tk.Listbox,
+                'canvas': tk.Canvas,
+                'frame': tb.Frame,
+                'labelframe': tb.Labelframe,
+                'panedwindow': tb.PanedWindow,
+                'notebook': tb.Notebook,
+                'treeview': tb.Treeview,
+                'menubutton': tb.Menubutton,
+                'message': tk.Message,
+                'checkbutton': tb.Checkbutton,
+                'radiobutton': tb.Radiobutton,
+                'self.dialog': self.dialog,
+                'self.master': self.master
+            }
             
-            elif widget_type == 'checkbox':
-                var = tk.BooleanVar()
-                self.checkbox_variables[item_index] = var
-                widget = widget_class(widget_parent, variable=var)
+            custom_class_name = item.get('class')
             
-            elif widget_type == 'radiobutton':
-                var_name = widget_config.pop('variable')
-                if var_name not in self.radio_variables:
-                    self.radio_variables[var_name] = tk.StringVar()
-                widget = widget_class(widget_parent, variable=self.radio_variables[var_name])
-            
-            elif widget_type == 'self.dialog':
-                widget = self.dialog
-            
-            elif widget_type == 'self.master':
-                widget = self.master
-            
+            if custom_class_name and custom_class_name in self.classes:
+                widget_class = self.classes.get(custom_class_name)
+                #widget_class = self.classes[custom_class_name](widget_map[widget_type])
             else:
-                if custom_class_name and custom_class_name in self.classes:
-                    class_config = None
-                    if "class_config" in item:
-                            class_config = self.parse_config_string(item.get('class_config',''))
-                    widget = widget_class(widget_map[widget_type], master=widget_parent, class_config=class_config)
-                else:
-                    widget = widget_class(widget_parent)
-                               
-            # Handle layout config
-            if widget_type != 'self.dialog' and widget_type != 'self.master':
-                if pack_config:
-                    widget.pack(**pack_config)
-                    if item.get('hidden'):
-                        widget.pack_forget()
-                        
-                if grid_config:
-                    widget.grid(row=row, **grid_config)                
-                    if item.get('hidden'):
-                        widget.grid_remove()
-            
-            widget.config(**widget_config)
-
-            return widget
+                widget_class = widget_map.get(widget_type)
+                
+            #widget_class = widget_map.get(widget_type)
+            if widget_class:
+                widget_config = self.parse_config_string(item.get('config', ''))
+                
     
+                # Handle special cases for widgets with additional setup
+                if widget_type in ['entry', 'textarea', 'scrolledtext']: 
+                    if custom_class_name and custom_class_name in self.classes:
+                        class_config = None
+                        if "class_config" in item:
+                            class_config = self.parse_config_string(item.get('class_config',''))
+                        
+                        widget = widget_class(widget_map[widget_type], master=widget_parent, config=class_config)
+                    else:
+                        widget = widget_class(widget_parent)
+    
+                    if widget_type == 'entry':
+                        
+                        var = tk.StringVar()
+                        self.entry_variables[item_index] = var
+                        widget.config(textvariable=var)
+                        #widget.focus_set()
+                    
+                    insert_config = self.parse_config_string(item.get('insert', ''))
+    
+                    if insert_config:
+                        widget.insert(tk.END, **insert_config)
+                        
+                        if widget_type == 'entry':
+                            if self.variable_manager.has_variable(widget_id, 'expand_entry_width'):
+                                if self.variable_manager.has_variable(widget_id, 'entry_max_width'):
+                                    max_width = self.variable_manager.get_variable(widget_id, 'entry_max_width')
+                                else:
+                                    max_width = 70
+                                text_width = self.update_entry_width(widget, font_string=widget_config.get('font'))    
+                                widget.config(width=text_width)
+    
+                        if widget_type == 'textarea' or widget_type == 'scrolledtext':
+                            line_count = int(widget.index('end-1c').split('.')[0])
+                            widget.config(height=line_count)
+                
+                elif widget_type == 'checkbox':
+                    var = tk.BooleanVar()
+                    self.checkbox_variables[item_index] = var
+                    widget = widget_class(widget_parent, variable=var)
+                
+                elif widget_type == 'radiobutton':
+                    var_name = widget_config.pop('variable')
+                    if var_name not in self.radio_variables:
+                        self.radio_variables[var_name] = tk.StringVar()
+                    widget = widget_class(widget_parent, variable=self.radio_variables[var_name])
+                
+                elif widget_type == 'self.dialog':
+                    widget = self.dialog
+                
+                elif widget_type == 'self.master':
+                    widget = self.master
+                
+                else:
+                    if custom_class_name and custom_class_name in self.classes:
+                        class_config = None
+                        if "class_config" in item:
+                                class_config = self.parse_config_string(item.get('class_config',''))
+                        widget = widget_class(widget_map[widget_type], master=widget_parent, class_config=class_config)
+                    else:
+                        widget = widget_class(widget_parent)
+                                   
+                # Handle layout config
+                if widget_type != 'self.dialog' and widget_type != 'self.master':
+                    if pack_config:
+                        widget.pack(**pack_config)
+                        if item.get('hidden'):
+                            widget.pack_forget()
+                            
+                    if grid_config:
+                        widget.grid(row=row, **grid_config)                
+                        if item.get('hidden'):
+                            widget.grid_remove()
+                
+                widget.config(**widget_config)
+    
+                return widget
+        
     def get_config(self, widget):
         options = {}
         for i in widget.keys():

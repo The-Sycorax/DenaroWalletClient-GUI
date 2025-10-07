@@ -100,149 +100,153 @@ class Dialogs:
         entry_type = "Generated Address" if entry_type == 'entries' else "Imported Address"
         
         prompt=[
-                                {"type":"label", "config":"text='Address Info', font='Helvetica 16 bold'", 
-                                 "grid_config":"column=0, columnspan=2"},
+                {"type":"label", "config":"text='Address Information', font='Helvetica 16 bold'", 
+                 "grid_config":"column=0, columnspan=2"},
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_1", 
-                                 "grid_config":"column=0, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_1", 
+                 "grid_config":"column=0, sticky='w'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='ID:', font='Helvetica 12 bold'",
-                                 "parent":"frame_1",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='ID:', font='Helvetica 12 bold'",
+                 "parent":"frame_1",
+                 "pack_config":"side='left'"},
                                     
-                                {"type":"entry", 
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
-                                 "parent":"frame_1",
-                                 "insert":"string='{}'".format(entry_data['id']),
-                                 "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry", 
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
+                 "parent":"frame_1",
+                 "insert":"string='{}'".format(entry_data['id']),
+                 "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'"},
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_2", 
-                                 "grid_config":"column=0, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_2", 
+                 "grid_config":"column=0, sticky='w'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='Type:', font='Helvetica 12 bold'",
-                                 "parent":"frame_2",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='Type:', font='Helvetica 12 bold'",
+                 "parent":"frame_2",
+                 "pack_config":"side='left'"},
                                     
-                                {"type":"entry", 
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
-                                 "parent":"frame_2",
-                                 "insert":"string='{}'".format(entry_type),
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry", 
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
+                 "parent":"frame_2",
+                 "insert":"string='{}'".format(entry_type),
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'"},
 
-                                {"type":"separator", 
-                                 "config":"orient='horizontal'", 
-                                 "grid_config":"column=0, columnspan=2, sticky='we', pady=(0, 5)"},
+                {"type":"separator", 
+                 "config":"orient='horizontal'", 
+                 "grid_config":"column=0, columnspan=2, sticky='we', pady=(0, 5)"},
                                  
-                                {"type":"frame", 
-                                 "widget_name":"frame_3", 
-                                 "grid_config":"column=0, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_3", 
+                 "grid_config":"column=0, sticky='w'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='Address:', font='Helvetica 12 bold'",
-                                 "parent":"frame_3",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='Address:', font='Helvetica 12 bold'",
+                 "parent":"frame_3",
+                 "pack_config":"side='left'"},
                                     
-                                {"type":"entry", 
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
-                                 "parent":"frame_3",
-                                 "insert":"string='{}'".format(entry_data['address']),
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry", 
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
+                 "parent":"frame_3",
+                 "insert":"string='{}'".format(entry_data['address']),
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'",
+                 "translate": False},
 
-                                {"type":"frame", 
-                                 "widget_name":"frame_4", 
-                                 "grid_config":"column=0, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_4", 
+                 "grid_config":"column=0, sticky='w'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='Public Key:', font='Helvetica 12 bold'",
-                                 "parent":"frame_4",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='Public Key:', font='Helvetica 12 bold'",
+                 "parent":"frame_4",
+                 "pack_config":"side='left'"},
                                     
-                                {"type":"entry", 
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
-                                 "parent":"frame_4",
-                                 "insert":"string='{}'".format(entry_data['public_key']),
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry", 
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'",
+                 "parent":"frame_4",
+                 "insert":"string='{}'".format(entry_data['public_key']),
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'",
+                 "translate": False},
 
-                                {"type":"frame", 
-                                 "widget_name":"frame_5", 
-                                 "grid_config":"column=0, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_5", 
+                 "grid_config":"column=0, sticky='w'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='Private Key:', font='Helvetica 12 bold'",
-                                 "parent":"frame_5",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='Private Key:', font='Helvetica 12 bold'",
+                 "parent":"frame_5",
+                 "pack_config":"side='left'"},
 
-                                {"type":"entry",
-                                 "widget_name":"private_key",
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                 "parent":"frame_5",
-                                 "insert":"string='{}'".format(f"{entry_data['private_key']}"),
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry",
+                 "widget_name":"private_key",
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
+                 "parent":"frame_5",
+                 "insert":"string='{}'".format(f"{entry_data['private_key']}"),
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'",
+                 "translate": False},
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_6", 
-                                 "grid_config":"row=6, column=1, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_6", 
+                 "grid_config":"row=6, column=1, sticky='w'"},
                                  
-                                {"type":"button",
-                                 "widget_name":"private_key_toggle",
-                                 "class":"KeyToggle",
-                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0",
-                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]",
-                                 "config":"style='toggle1.TButton', padding=0",                                  
-                                 "command": "command_str='set_key_visibility', args='(self.widget_references[\"private_key_toggle\"], self.widget_references[\"private_key\"],)', execute_on_load=True, first=True",
-                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_key_visibility', args='(self.widget_references[\"private_key_toggle\"], self.widget_references[\"private_key\"],)'"}],
-                                 "parent":"frame_6",
-                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
+                {"type":"button",
+                 "widget_name":"private_key_toggle",
+                 "class":"KeyToggle",
+                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0",
+                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]",
+                 "config":"style='toggle1.TButton', padding=0",                                  
+                 "command": "command_str='set_key_visibility', args='(self.widget_references[\"private_key_toggle\"], self.widget_references[\"private_key\"],)', execute_on_load=True, first=True",
+                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_key_visibility', args='(self.widget_references[\"private_key_toggle\"], self.widget_references[\"private_key\"],)'"}],
+                 "parent":"frame_6",
+                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
 
-                                {"type":"frame", 
-                                 "widget_name":"frame_7", 
-                                 "grid_config":"column=0, sticky='w'",
-                                 "hidden":False if "mnemonic" in entry_data else True},
+                {"type":"frame", 
+                 "widget_name":"frame_7", 
+                 "grid_config":"column=0, sticky='w'",
+                 "hidden":False if "mnemonic" in entry_data else True},
                                  
-                                {"type":"label", 
-                                 "config":"text='Mnemonic:', font='Helvetica 12 bold'",
-                                 "parent":"frame_7",
-                                 "pack_config":"side='left'"},
+                {"type":"label", 
+                 "config":"text='Mnemonic:', font='Helvetica 12 bold'",
+                 "parent":"frame_7",
+                 "pack_config":"side='left'"},
 
-                                {"type":"entry",
-                                 "widget_name":"mnemonic",
-                                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
-                                 "parent":"frame_7",
-                                 "insert":"string='{}'".format(f"{entry_data['mnemonic']}" if "mnemonic" in entry_data else ""),
-                                 "variables": {"expand_entry_width": True},
-                                 "pack_config":"side='left'"},
+                {"type":"entry",
+                 "widget_name":"mnemonic",
+                 "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold'", 
+                 "parent":"frame_7",
+                 "insert":"string='{}'".format(f"{entry_data['mnemonic']}" if "mnemonic" in entry_data else ""),
+                 "variables": {"expand_entry_width": True},
+                 "pack_config":"side='left'",
+                 "translate": False},
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_8", 
-                                 "grid_config":"row=8, column=1, sticky='w'",
-                                 "hidden":False if "mnemonic" in entry_data else True},
+                {"type":"frame", 
+                 "widget_name":"frame_8", 
+                 "grid_config":"row=8, column=1, sticky='w'",
+                 "hidden":False if "mnemonic" in entry_data else True},
                                  
-                                {"type":"button",
-                                 "widget_name":"mnemonic_toggle",
-                                 "class":"KeyToggle",
-                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0",
-                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]",
-                                 "config":"style='toggle1.TButton', padding=0",                                  
-                                 "command": "command_str='set_key_visibility', args='(self.widget_references[\"mnemonic_toggle\"], self.widget_references[\"mnemonic\"],)', execute_on_load=True, first=True",
-                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_key_visibility', args='(self.widget_references[\"mnemonic_toggle\"], self.widget_references[\"mnemonic\"],)'"}],
-                                 "parent":"frame_8",
-                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
+                {"type":"button",
+                 "widget_name":"mnemonic_toggle",
+                 "class":"KeyToggle",
+                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0",
+                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]",
+                 "config":"style='toggle1.TButton', padding=0",                                  
+                 "command": "command_str='set_key_visibility', args='(self.widget_references[\"mnemonic_toggle\"], self.widget_references[\"mnemonic\"],)', execute_on_load=True, first=True",
+                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_key_visibility', args='(self.widget_references[\"mnemonic_toggle\"], self.widget_references[\"mnemonic\"],)'"}],
+                 "parent":"frame_8",
+                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
                                     
-                                {"type":"button", 
-                                 "config":"text='Close'",
-                                 "command":"command_str=self.cancel",
-                                 "grid_config":"column=0, columnspan=2, sticky='ew'"}
-                            ]
+                {"type":"button", 
+                 "config":"text='Close'",
+                 "command":"command_str=self.cancel",
+                 "grid_config":"column=0, columnspan=2, sticky='ew'"}
+            ]
             
         dialog_callbacks = {
             "set_key_visibility": self.dialog_functions.set_key_visibility,
@@ -251,7 +255,7 @@ class Dialogs:
 
         self._create_and_run_dialog(
             prompt=prompt,
-            title="Address Info",
+            title="Address Information",
             result_queue=result_queue,
             on_complete=on_complete,
             result_processor=lambda r: True, # Return True on close
@@ -522,59 +526,58 @@ class Dialogs:
     def _create_wallet_name_step(self, on_complete, modal=True):
         """A private helper for the second step of the create wallet workflow."""
         prompt = [     
-                                {"type":"label", "config":"text='Create Wallet', font='Helvetica 14 bold'", 
-                                 "grid_config":"column=0"},
+                    {"type":"label", "config":"text='Create Wallet', font='Helvetica 14 bold'", 
+                     "grid_config":"column=0"},
 
-                                {'type': 'separator', 
-                                 "config":"orient='horizontal'", 
-                                 "grid_config":"column=0, columnspan=2, sticky='we'"},
+                    {'type': 'separator', 
+                     "config":"orient='horizontal'", 
+                     "grid_config":"column=0, columnspan=2, sticky='we'"},
                                  
-                                {"type":"label", 
-                                 "config":"text='Wallet Name: ', font='Helvetica 10 bold'",
-                                 "grid_config":"column=0, sticky='w', pady=(20, 0)"},
+                    {"type":"label", 
+                     "config":"text='Wallet Name: ', font='Helvetica 10 bold'",
+                     "grid_config":"column=0, sticky='w', pady=(20, 0)"},
                                     
-                                {"type":"entry", 
-                                 "config":"state='normal'",
-                                 #"variables":[{"set_var":"name='disable_context_menu_items', value=True"}],
-                                 "grid_config":"column=0, sticky='we', padx=(25, 0), pady=(5, 0)"},
+                    {"type":"entry", 
+                     "config":"state='normal'",
+                     #"variables":[{"set_var":"name='disable_context_menu_items', value=True"}],
+                     "grid_config":"column=0, sticky='we', padx=(25, 0), pady=(5, 0)"},
 
-                                {"type":"label", 
-                                 "config":"text='Wallet Options:', font='Helvetica 10 bold'", 
-                                 "grid_config":"column=0, sticky='w', pady=(20, 0)"},
+                    {"type":"label", 
+                     "config":"text='Wallet Options:', font='Helvetica 10 bold'", 
+                     "grid_config":"column=0, sticky='w', pady=(20, 0)"},
 
-                                {"type":"checkbox", 
-                                 "widget_name":"deterministic_checkbox", 
-                                 "config":"text='Deterministic Address Generation'",
-                                 "grid_config":"column=0, sticky='w', padx=(25, 0), pady=(5, 0)"},                                 
+                    {"type":"checkbox", 
+                     "widget_name":"deterministic_checkbox", 
+                     "config":"text='Deterministic Address Generation'",
+                     "grid_config":"column=0, sticky='w', padx=(25, 0), pady=(5, 0)"},                                 
 
-                                 {"type":"checkbox", 
-                                 "widget_name":"2fa_checkbox", 
-                                 "config":"text='Two-Factor Authentication', state='disabled'",
-                                 "grid_config":"row=7, column=0, sticky='w', padx=(25, 0), pady=(10, 0)"},
+                    {"type":"checkbox", 
+                     "widget_name":"2fa_checkbox", 
+                     "config":"text='Two-Factor Authentication', state='disabled'",
+                     "grid_config":"row=7, column=0, sticky='w', padx=(25, 0), pady=(10, 0)"},
 
-                                {"type":"checkbox", 
-                                 "widget_name":"encrypt_checkbox", 
-                                 "config":"text='Encryption'",
-                                 "command": "command_str='enable_2fa_checkbox', args='(self.widget_references[\"encrypt_checkbox\"], self.widget_references[\"2fa_checkbox\"],)', execute_on_load=False",
-                                 "grid_config":"row=6, column=0, sticky='w', padx=(25, 0), pady=(10, 0)"},        
+                    {"type":"checkbox", 
+                     "widget_name":"encrypt_checkbox", 
+                     "config":"text='Encryption'",
+                     "command": "command_str='enable_2fa_checkbox', args='(self.widget_references[\"encrypt_checkbox\"], self.widget_references[\"2fa_checkbox\"],)', execute_on_load=False",
+                     "grid_config":"row=6, column=0, sticky='w', padx=(25, 0), pady=(10, 0)"},        
 
-                                {"type":"frame", 
-                                 "widget_name":"frame_1", 
-                                 "grid_config":"column=0, sticky='we', pady=(20, 0)"},                              
+                    {"type":"frame", 
+                     "widget_name":"frame_1", 
+                     "grid_config":"column=0, sticky='we', pady=(20, 0)"},                              
 
-                                {'type': 'button', 
-                                 "config":"text='Cancel', width=20", 
-                                 "command":"command_str=self.cancel", 
-                                 "parent":"frame_1",
-                                 "pack_config":"side='left', expand=True, fill=x, padx=(0, 5)"},
+                    {'type': 'button', 
+                     "config":"text='Cancel', width=20", 
+                     "command":"command_str=self.cancel", 
+                     "parent":"frame_1",
+                     "pack_config":"side='left', expand=True, fill=x, padx=(0, 5)"},
 
-                                {'type': 'button', 
-                                 "config":"text='Continue', width=20", 
-                                 "command":"command_str=self.submit_entry", 
-                                 "parent":"frame_1",
-                                 "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},
-
-                            ]
+                    {'type': 'button', 
+                     "config":"text='Continue', width=20", 
+                     "command":"command_str=self.submit_entry", 
+                     "parent":"frame_1",
+                     "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},
+                ]
 
         self._create_and_run_dialog(prompt=prompt, title="Create New Wallet", on_complete=on_complete,
             result_processor=lambda r: r, # Return raw result tuple
@@ -590,78 +593,78 @@ class Dialogs:
         """
         def get_passwords_step():
             prompt = [
-                                {"type":"label", 
-                                "config":"text={}".format(msg), 
-                                "grid_config":"column=0, sticky='w', pady=(20, 0)"}, 
+                        {"type":"label", 
+                        "config":"text={}".format(msg), 
+                        "grid_config":"column=0, sticky='w', pady=(20, 0)"}, 
 
-                                {"type":"label", 
-                                "config":"text='Enter Password:', font='Helvetica 10 bold'", 
-                                "grid_config":"column=0, sticky='w', pady=(20, 0)"}, 
+                        {"type":"label", 
+                        "config":"text='Enter Password:', font='Helvetica 10 bold'", 
+                        "grid_config":"column=0, sticky='w', pady=(20, 0)"}, 
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_1", 
-                                 "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(0, 0)"}, 
+                        {"type":"frame", 
+                         "widget_name":"frame_1", 
+                         "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(0, 0)"}, 
                                                  
-                                {"type":"entry", 
-                                 "widget_name":"password_1_entry", 
-                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                 "parent":"frame_1", 
-                                 "pack_config":"side='left', expand=True, fill='x'"}, 
+                        {"type":"entry", 
+                         "widget_name":"password_1_entry", 
+                         "config":"font='Helvetica 12 bold', show='*'", 
+                         "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
+                         "parent":"frame_1", 
+                         "pack_config":"side='left', expand=True, fill='x'"}, 
 
-                                {"type":"button", 
-                                 "widget_name":"password_1_entry_toggle", 
-                                 "class":"KeyToggle", 
-                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                 "config":"style='toggle1.TButton', padding=0", 
-                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_1_entry_toggle\"], self.widget_references[\"password_1_entry\"],)', execute_on_load=True, first=True", 
-                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_1_entry_toggle\"], self.widget_references[\"password_1_entry\"],)'"}], 
-                                 "parent":"frame_1", 
-                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
+                        {"type":"button", 
+                         "widget_name":"password_1_entry_toggle", 
+                         "class":"KeyToggle", 
+                         "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
+                         "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
+                         "config":"style='toggle1.TButton', padding=0", 
+                         "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_1_entry_toggle\"], self.widget_references[\"password_1_entry\"],)', execute_on_load=True, first=True", 
+                         "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_1_entry_toggle\"], self.widget_references[\"password_1_entry\"],)'"}], 
+                         "parent":"frame_1", 
+                         "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
                                 
-                                {"type":"label", 
-                                "config":"text='Confirm Password:', font='Helvetica 10 bold'", 
-                                "grid_config":"column=0, sticky='w', pady=(20, 0)"},
+                        {"type":"label", 
+                        "config":"text='Confirm Password:', font='Helvetica 10 bold'", 
+                        "grid_config":"column=0, sticky='w', pady=(20, 0)"},
                                 
-                                {"type":"frame", 
-                                 "widget_name":"frame_2", 
-                                 "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(0, 0)"}, 
+                        {"type":"frame", 
+                         "widget_name":"frame_2", 
+                         "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(0, 0)"}, 
                                                  
-                                {"type":"entry", 
-                                 "widget_name":"password_2_entry", 
-                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
-                                 "parent":"frame_2", 
-                                 "pack_config":"side='left', expand=True, fill='x'"}, 
+                        {"type":"entry", 
+                         "widget_name":"password_2_entry", 
+                         "config":"font='Helvetica 12 bold', show='*'", 
+                         "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}], 
+                         "parent":"frame_2", 
+                         "pack_config":"side='left', expand=True, fill='x'"}, 
 
-                                {"type":"button", 
-                                 "widget_name":"password_2_entry_toggle", 
-                                 "class":"KeyToggle", 
-                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                 "config":"style='toggle1.TButton', padding=0", 
-                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_2_entry_toggle\"], self.widget_references[\"password_2_entry\"],)', execute_on_load=True, first=True", 
-                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_2_entry_toggle\"], self.widget_references[\"password_2_entry\"],)'"}], 
-                                 "parent":"frame_2", 
-                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
+                        {"type":"button", 
+                         "widget_name":"password_2_entry_toggle", 
+                         "class":"KeyToggle", 
+                         "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
+                         "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
+                         "config":"style='toggle1.TButton', padding=0", 
+                         "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_2_entry_toggle\"], self.widget_references[\"password_2_entry\"],)', execute_on_load=True, first=True", 
+                         "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_2_entry_toggle\"], self.widget_references[\"password_2_entry\"],)'"}], 
+                         "parent":"frame_2", 
+                         "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"},
     
-                                {"type":"frame", 
-                                 "widget_name":"frame_3", 
-                                 "grid_config":"column=0, sticky='we', pady=(20, 0)"},                              
+                        {"type":"frame", 
+                         "widget_name":"frame_3", 
+                         "grid_config":"column=0, sticky='we', pady=(20, 0)"},                              
     
-                                {'type': 'button', 
-                                 "config":"text='Submit', width=20", 
-                                 "command":"command_str=self.submit_entry", 
-                                 "parent":"frame_3",
-                                 "pack_config":"side='left', expand=True, fill=x, padx=(0, 5)"},
+                        {'type': 'button', 
+                         "config":"text='Submit', width=20", 
+                         "command":"command_str=self.submit_entry", 
+                         "parent":"frame_3",
+                         "pack_config":"side='left', expand=True, fill=x, padx=(0, 5)"},
     
-                                {'type': 'button', 
-                                 "config":"text='Cancel', width=20", 
-                                 "command":"command_str=self.cancel", 
-                                 "parent":"frame_3",
-                                 "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},                                  
-                                ]
+                        {'type': 'button', 
+                         "config":"text='Cancel', width=20", 
+                         "command":"command_str=self.cancel", 
+                         "parent":"frame_3",
+                         "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},                                  
+                    ]
 
             def handle_result(result):
                 # This function is the callback for the password entry dialog.
@@ -719,47 +722,46 @@ class Dialogs:
         """
         # Define the UI layout for the password dialog.
         prompt = [
-                                                {'type': 'label', 
-                                                 "config":"text={}".format(msg), 
-                                                 "grid_config":"column=0, columnspan=2"},
+                    {'type': 'label', 
+                     "config":"text={}".format(msg), 
+                     "grid_config":"column=0, columnspan=2"},
 
-
-                                                {"type":"frame", 
-                                                 "widget_name":"frame_1", 
-                                                 "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(10, 0)"}, 
+                    {"type":"frame", 
+                     "widget_name":"frame_1", 
+                     "grid_config":"column=0, columnspan=2, sticky='nswe', pady=(10, 0)"}, 
                                                  
-                                                {"type":"entry", 
-                                                 "widget_name":"password_entry", 
-                                                 "config":"font='Helvetica 12 bold', show='*'", 
-                                                 "parent":"frame_1", 
-                                                 "pack_config":"side='left', expand=True, fill='x'"}, 
+                    {"type":"entry", 
+                     "widget_name":"password_entry", 
+                     "config":"font='Helvetica 12 bold', show='*'", 
+                     "parent":"frame_1", 
+                     "pack_config":"side='left', expand=True, fill='x'"}, 
 
-                                                {"type":"button", 
-                                                 "widget_name":"password_entry_toggle", 
-                                                 "class":"KeyToggle", 
-                                                 "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
-                                                 "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
-                                                 "config":"style='toggle1.TButton', padding=0", 
-                                                 "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)', execute_on_load=True, first=True", 
-                                                 "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)'"}], 
-                                                 "parent":"frame_1", 
-                                                 "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
+                    {"type":"button", 
+                     "widget_name":"password_entry_toggle", 
+                     "class":"KeyToggle", 
+                     "style_config":"style='toggle1.TButton', background='white', borderwidth=0, highlightthickness=0, padx=0, pady=0", 
+                     "style_map_config":"style='toggle1.TButton', background=[(\"active\",\"white\")], foreground=[(\"disabled\",\"gray\")]", 
+                     "config":"style='toggle1.TButton', padding=0", 
+                     "command": "command_str='set_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)', execute_on_load=True, first=True", 
+                     "binds":[{"bind_config":"event='<Button-1>', callback_str='toggle_entry_visibility', args='(self.widget_references[\"password_entry_toggle\"], self.widget_references[\"password_entry\"],)'"}], 
+                     "parent":"frame_1", 
+                     "pack_config":"side='left', padx=(5, 0), pady=(0, 5)"}, 
 
-                                                #{'type': 'entry', 
-                                                # "config":"{}".format(f"show={show}" if show else ''), 
-                                                # "binds":[{"bind_config":"event='<Return>',  callback_str='lambda e:self.submit_entry'"}],
-                                                # "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
+                    #{'type': 'entry', 
+                    # "config":"{}".format(f"show={show}" if show else ''), 
+                    # "binds":[{"bind_config":"event='<Return>',  callback_str='lambda e:self.submit_entry'"}],
+                    # "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
 
-                                                {'type': 'button', 
-                                                 "config":"text='Submit'", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
+                    {'type': 'button', 
+                     "config":"text='Submit'", 
+                     "command":"command_str=self.submit_entry", 
+                     "grid_config":"row=2, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
 
-                                                {'type': 'button', 
-                                                 "config":"text='Cancel'", 
-                                                 "command":"command_str=self.cancel", 
-                                                 "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
-                                                                                              ]
+                    {'type': 'button', 
+                     "config":"text='Cancel'", 
+                     "command":"command_str=self.cancel", 
+                     "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
+             ]
 
         # Define the special callbacks and classes needed for this dialog.
         dialog_callbacks = {
@@ -783,39 +785,39 @@ class Dialogs:
         """
         # Define the UI layout for the dialog.
         prompt = [
-                                            {"type": "label", 
-                                             "config":"text={}".format(msg), 
-                                             "grid_config":"column=0"},
+                    {"type": "label", 
+                     "config":"text={}".format(msg), 
+                     "grid_config":"column=0"},
                                             
-                                            {"type":"frame", 
-                                             "widget_name":"frame_1", 
-                                             "grid_config":"column=0",
-                                             "hidden":False if msg_2 else True},
+                    {"type":"frame", 
+                     "widget_name":"frame_1", 
+                     "grid_config":"column=0",
+                     "hidden":False if msg_2 else True},
                                             
-                                            {"type":"entry",
-                                             "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 10 bold', justify='center'", 
-                                             "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
-                                             "insert":"string='{}'".format(msg_2),
-                                             "variables": {"expand_entry_width": True},
-                                             "parent":"frame_1",
-                                             "pack_config":"side='left', padx=(5, 5)"},
+                    {"type":"entry",
+                     "config":"style='addressInfo.TEntry', state='readonly', font='Helvetica 10 bold', justify='center'", 
+                     "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
+                     "insert":"string='{}'".format(msg_2),
+                     "variables": {"expand_entry_width": True},
+                     "parent":"frame_1",
+                     "pack_config":"side='left', padx=(5, 5)"},
                                             
-                                            {"type":"frame", 
-                                             "widget_name":"frame_2", 
-                                             "grid_config":"column=0, sticky='we'"},                                            
+                    {"type":"frame", 
+                     "widget_name":"frame_2", 
+                     "grid_config":"column=0, sticky='we'"},                                            
                                             
-                                            {"type": "button", 
-                                             "config":"text='Yes'", 
-                                             "parent":"frame_2",
-                                             "command":"command_str=self.submit_entry", 
-                                             "pack_config":"side='left', fill='x', expand=True, padx=(5, 0), pady=(0, 5)"},                                            
+                    {"type": "button", 
+                     "config":"text='Yes'", 
+                     "parent":"frame_2",
+                     "command":"command_str=self.submit_entry", 
+                     "pack_config":"side='left', fill='x', expand=True, padx=(5, 0), pady=(0, 5)"},                                            
                                             
-                                            {"type": "button", 
-                                             "config":"text='No'",
-                                             "parent":"frame_2",
-                                             "command":"command_str=self.cancel", 
-                                             "pack_config":"side='left', fill='x', expand=True, padx=(5, 0), pady=(0, 5)"}
-                                            ]
+                    {"type": "button", 
+                     "config":"text='No'",
+                     "parent":"frame_2",
+                     "command":"command_str=self.cancel", 
+                     "pack_config":"side='left', fill='x', expand=True, padx=(5, 0), pady=(0, 5)"}
+                    ]
         
         # Define a custom function to process the result.
         # CustomDialog with `true_on_submit` returns ([True], (), ()) on 'Yes'.
@@ -842,37 +844,90 @@ class Dialogs:
         (was_confirmed: bool, disable_dialog: bool).
         Returns None if canceled.
         """
-        # Define the UI layout for the dialog.
+
         prompt = [
-                                                {'type': 'label', 
-                                                 "config":"text='Are you sure you want to execute this transaction?', font='Helvetica 12 bold'", 
-                                                 "grid_config":"column=0, columnspan=2"},
-                                                
-                                                {'type': 'label', 
-                                                 "config": "text='From: {}\n\nTo: {}'".format(sender, receiver), 
-                                                 "grid_config":"column=0, columnspan=2, sticky='w', pady=(10, 0)"},
-
-                                                {'type': 'separator', 
-                                                 "config":"orient='horizontal'", 
-                                                 "grid_config":"column=0, columnspan=2, sticky='we', pady=(10, 0)"},
-
-                                                {'type': 'label', 
-                                                 "config":"text='Amount: {} DNR', font='Helvetica 12 bold'".format(amount), 
-                                                 "grid_config":"column=0, columnspan=2, sticky='w', pady=(5, 0)"},
-
-                                                {'type': 'checkbox', 
-                                                 "config":"text='Do not show this dialog box for future transactions (This session only)'", 
-                                                 "grid_config":"column=0, columnspan=2, sticky='w', pady=(10, 0)"},
-
-                                                {'type': 'button', 
-                                                 "config":"text='Yes'", 
-                                                 "command":"command_str=self.submit_entry", 
-                                                 "grid_config":"row=6, column=0, sticky='ew', padx=(0, 5), pady=(10, 0)"},
-
-                                                {'type': 'button', "config":"text='No'", 
-                                                 "command":"command_str=self.cancel", 
-                                                 "grid_config":"row=6, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}                                                
-                                               ]
+                    {'type': 'label',
+                     "config": "text='Are you sure you want to execute this transaction?', font='Helvetica 12 bold', anchor='center'",
+                     "pack_config": "side='top', fill='x', pady=(0, 10)"},
+                
+                    # --- From Row ---
+                    {'type': 'frame',
+                     'widget_name': 'from_row_frame',
+                     'pack_config': "side='top', fill='x'"},
+                
+                    {'type': 'label',
+                     'parent': 'from_row_frame',
+                     "config": "text='From:'",
+                     "pack_config": "side='left'"},
+                    
+                    {'type': 'label',
+                     'parent': 'from_row_frame',
+                     "config": "text='{}'".format(sender),
+                     "pack_config": "side='left', padx=(5, 0)",
+                     "translate": False},
+                
+                    # --- To Row ---
+                    {'type': 'frame',
+                     'widget_name': 'to_row_frame',
+                     'pack_config': "side='top', fill='x'"},
+                
+                    {'type': 'label',
+                     'parent': 'to_row_frame',
+                     "config": "text='To:'",
+                     "pack_config": "side='left'"},
+                
+                    {'type': 'label',
+                     'parent': 'to_row_frame',
+                     "config": "text='{}'".format(receiver),
+                     "pack_config": "side='left', padx=(5, 0)",
+                     "translate": False},
+                
+                    # --- Separator ---
+                    {'type': 'separator',
+                     "config": "orient='horizontal'",
+                     "pack_config": "side='top', fill='x', pady=(10, 0)"},
+                
+                    # --- NEW Amount Row ---
+                    # Create a frame to hold the two amount labels side-by-side.
+                    {'type': 'frame',
+                     'widget_name': 'amount_row_frame',
+                     'pack_config': "side='top', fill='x', pady=(5, 0)"},
+                
+                    # First label: "Amount:"
+                    {'type': 'label',
+                     'parent': 'amount_row_frame',
+                     "config": "text='Amount:', font='Helvetica 12 bold'",
+                     "pack_config": "side='left'"},
+                
+                    # Second label: The actual amount value
+                    {'type': 'label',
+                     'parent': 'amount_row_frame',
+                     "config": "text='{} DNR', font='Helvetica 12 bold".format(amount),
+                     "pack_config": "side='left', padx=(5, 0)",
+                     "translate": False},
+                
+                    # --- Checkbox ---
+                    {'type': 'checkbox',
+                     "config": "text='Do not show this dialog box for future transactions (This session only)'",
+                     "pack_config": "side='top', anchor='w', pady=(10, 0)"},
+                
+                    # --- Button Row ---
+                    {'type': 'frame',
+                     'widget_name': 'button_frame',
+                     'pack_config': "side='top', fill='x', pady=(10, 0)"},
+                     
+                    {'type': 'button',
+                     'parent': 'button_frame',
+                     "config": "text='Yes'",
+                     "command": "command_str=self.submit_entry",
+                     "pack_config": "side='left', expand=True, fill='x', padx=(0, 5)"},
+                
+                    {'type': 'button',
+                     'parent': 'button_frame',
+                     "config": "text='No'",
+                     "command": "command_str=self.cancel",
+                     "pack_config": "side='left', expand=True, fill='x', padx=(5, 0)"}
+                ]
         
         # Define a custom processor to handle the two return values.
         def tx_processor(raw_result):
@@ -901,18 +956,18 @@ class Dialogs:
         close_event (cancel).
         """
         prompt = [
-            {"type": "label",
-             "widget_name": "countdown_label",
-             "config": "text='Initializing countdown...'",
-             # This command is attached to the visible label.
-             # We pass the callback name as a string, not the result of a call.
-             "grid_config": "row=0, column=0, padx=20, pady=20",
-             "command": "command_str='start_loops', args='(self, self.widget_references[\"countdown_label\"], self.callbacks[\"get_active_listener_close_event\"])', execute_on_load=True"},
-
-            {"type": "self.master",
-             "binds": [{"bind_config": "event='<KeyRelease>', callback_str='self.submit_entry'"}]},
-        ]
-
+                    {"type": "label",
+                     "widget_name": "countdown_label",
+                     "config": "text='Initializing countdown...'",
+                     # This command is attached to the visible label.
+                     # We pass the callback name as a string, not the result of a call.
+                     "grid_config": "row=0, column=0, padx=20, pady=20",
+                     "command": "command_str='start_loops', args='(self, self.widget_references[\"countdown_label\"], self.callbacks[\"get_active_listener_close_event\"])', execute_on_load=True"},
+        
+                    {"type": "self.master",
+                     "binds": [{"bind_config": "event='<KeyRelease>', callback_str='self.submit_entry'"}]},
+                ]
+        
         dialog_callbacks = {
             "start_loops": self.dialog_functions.start_input_listener_loops,
             "get_active_listener_close_event": self.dialog_functions.get_active_listener_close_event
@@ -1025,7 +1080,8 @@ class Dialogs:
                 "style_map_config": "style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
                 "parent": f"frame_show_{frame_num}",
                 "insert": f"string='{word_list[i]}'",
-                "pack_config": "side='left'"
+                "pack_config": "side='left'",
+                "translate": False
             })
 
         # Add the final separator and action buttons
@@ -1059,13 +1115,15 @@ class Dialogs:
         """
         
         # --- DYNAMIC PROMPT GENERATION ---
-        prompt = [{"type": "label",
-                   "config":"text='Please confirm your recovery phrase.'",
-                   "grid_config":"column=0"},
+        prompt = [
+                    {"type": "label",
+                     "config":"text='Please confirm your recovery phrase.'",
+                     "grid_config":"column=0"},
 
-                  {"type": "separator",
-                   "config":"orient='horizontal'",
-                   "grid_config":"column=0, sticky='we', pady=(5, 5)"}]
+                    {"type": "separator",
+                     "config":"orient='horizontal'",
+                     "grid_config":"column=0, sticky='we', pady=(5, 5)"}
+                ]
 
         # Loop to create the 12 entry fields
         for i in range(12):
@@ -1088,7 +1146,8 @@ class Dialogs:
                 "widget_name": f"word_{word_num}",
                 "config":"font='Helvetica 12 bold', show='*'",
                 "binds":[{"bind_config":"event='<Tab>', callback_str='focus_next_widget'"}, {"bind_config":"event='<space>', callback_str='focus_next_widget'"}],
-                "parent": f"frame_{frame_num}", "pack_config":"side='left'"
+                "parent": f"frame_{frame_num}", "pack_config":"side='left'",
+                "translate": False
             }
 
             if previous_attempt and i < len(previous_attempt):
@@ -1177,66 +1236,67 @@ class Dialogs:
     def about_wallet_dialog(self, modal=True, result_queue=None, on_complete=None):
 
         prompt=[
-
-                                    {"type":"frame", 
-                                     "widget_name":"frame_1", 
-                                     "grid_config":"row=0, column=0, sticky='w', padx=(0, 10)"},
+                {"type":"frame", 
+                 "widget_name":"frame_1", 
+                 "grid_config":"row=0, column=0, sticky='w', padx=(0, 10)"},
                                     
-                                    {"type":"label", 
-                                      "widget_name":"label_1",
-                                      "config":"",
-                                      "parent":"frame_1",
-                                      "command": "command_str='set_label_image', args='(self.widget_references[\"label_1\"],\"./denaro/gui_assets/denaro_logo.png\",120,120,)', execute_on_load=True",
-                                      "pack_config":"side='left'"},
+                {"type":"label", 
+                  "widget_name":"label_1",
+                  "config":"",
+                  "parent":"frame_1",
+                  "command": "command_str='set_label_image', args='(self.widget_references[\"label_1\"],\"./denaro/gui_assets/denaro_logo.png\",120,120,)', execute_on_load=True",
+                  "pack_config":"side='left'"},
                                     
-                                    {"type":"frame", 
-                                     "widget_name":"frame_2", 
-                                     "grid_config":"row=0, column=1, sticky='w', padx=(0, 10)"},
+                {"type":"frame", 
+                 "widget_name":"frame_2", 
+                 "grid_config":"row=0, column=1, sticky='w', padx=(0, 10)"},
 
-                                    {'type': 'label', 
-                                     "widget_name":"label_2",
-                                     "parent":"frame_2",
-                                     "config":"text='{}', anchor='w', justify='left'".format(f'\n{self.root.wallet_client_version}'), 
-                                     "grid_config":"row=0, column=1, sticky='w'"},
+                {'type': 'label', 
+                 "widget_name":"label_2",
+                 "parent":"frame_2",
+                 "config":"text='{}', anchor='w', justify='left'".format(f'\n{self.root.wallet_client_version}'), 
+                 "grid_config":"row=0, column=1, sticky='w'",
+                 "translate": False},
                                     
-                                    {"type":"frame", 
-                                     "widget_name":"frame_3",
-                                     "parent":"frame_2", 
-                                     "class":"HyperlinkLabel",
-                                     "class_config":"text=\"Copyright © 2023-2025 The-Sycorax (https://github.com/The-Sycorax)\", link_text=\"\", url=\"https://github.com/The-Sycorax\"",
-                                     "grid_config":"row=1, column=1, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_3",
+                 "parent":"frame_2", 
+                 "class":"HyperlinkLabel",
+                 "class_config":"text=\"Copyright © 2023-2025 The-Sycorax (https://github.com/The-Sycorax)\", link_text=\"\", url=\"https://github.com/The-Sycorax\"",
+                 "grid_config":"row=1, column=1, sticky='w'",
+                 "translate": False},
 
-                                    {"type":"frame", 
-                                     "widget_name":"frame_4",
-                                     "parent":"frame_2", 
-                                     "class":"HyperlinkLabel",
-                                     "class_config":"text=\"\nThe source code for this wallet client is available at: https://github.com/The-Sycorax/DenaroWalletClient-GUI\", link_text=\"\", url=\"https://github.com/The-Sycorax/DenaroWalletClient-GUI\"",
-                                     "grid_config":"row=2, column=1, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_4",
+                 "parent":"frame_2", 
+                 "class":"HyperlinkLabel",
+                 "class_config":"text=\"\nThe source code for this wallet client is available at: https://github.com/The-Sycorax/DenaroWalletClient-GUI\", link_text=\"\", url=\"https://github.com/The-Sycorax/DenaroWalletClient-GUI\"",
+                 "grid_config":"row=2, column=1, sticky='w'"},
 
-                                    {"type":"frame", 
-                                     "widget_name":"frame_4",
-                                     "parent":"frame_2", 
-                                     "class":"HyperlinkLabel",
-                                     "class_config":"text=\"The source code for the Denaro cryptocurrency is available at: https://github.com/denaro-coin/denaro\", link_text=\"\", url=\"https://github.com/denaro-coin/denaro\"",
-                                     "grid_config":"row=3, column=1, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_4",
+                 "parent":"frame_2", 
+                 "class":"HyperlinkLabel",
+                 "class_config":"text=\"The source code for the Denaro cryptocurrency is available at: https://github.com/denaro-coin/denaro\", link_text=\"\", url=\"https://github.com/denaro-coin/denaro\"",
+                 "grid_config":"row=3, column=1, sticky='w'"},
 
-                                    {'type': 'label', 
-                                     "parent":"frame_2",
-                                     "config":"text='{}', justify='left'".format('\nThis is experimental software.'), 
-                                     "grid_config":"row=4, column=1, sticky='w'"},
+                {'type': 'label', 
+                 "parent":"frame_2",
+                 "config":"text='{}', justify='left'".format('\nThis is experimental software.'), 
+                 "grid_config":"row=4, column=1, sticky='w'"},
 
-                                    {"type":"frame", 
-                                     "widget_name":"frame_5",
-                                     "parent":"frame_2", 
-                                     "class":"HyperlinkLabel",
-                                     "class_config":"text=\"Distributed under the MIT software license, see the accompanying LICENSE file or https://opensource.org/licenses/MIT\", link_text=\"\", url=\"https://opensource.org/licenses/MIT\"",
-                                     "grid_config":"row=5, column=1, sticky='w'"},
+                {"type":"frame", 
+                 "widget_name":"frame_5",
+                 "parent":"frame_2", 
+                 "class":"HyperlinkLabel",
+                 "class_config":"text=\"Distributed under the MIT software license, see the accompanying LICENSE file or https://opensource.org/licenses/MIT\", link_text=\"\", url=\"https://opensource.org/licenses/MIT\"",
+                 "grid_config":"row=5, column=1, sticky='w'"},
 
-                                    {'type': 'button', 
-                                     "config":"text='Close'", 
-                                     "command":"command_str=self.submit_entry", 
-                                     "grid_config":"row=6, column=1, sticky='e', padx=(0, 10), pady=(75, 10)"}
-                                     ]
+                {'type': 'button', 
+                 "config":"text='Close'", 
+                 "command":"command_str=self.submit_entry", 
+                 "grid_config":"row=6, column=1, sticky='e', padx=(0, 10), pady=(75, 10)"}
+            ]
         
         self._create_and_run_dialog(prompt=prompt, title="About", result_queue=result_queue, on_complete=on_complete,
             callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink},
@@ -1261,42 +1321,68 @@ class Dialogs:
         
         # The prompt is fully declarative and robust.
         prompt = [
+            # --- Top Row ---
+            # 1. Create a frame to hold the top row's three widgets.
+            {"type": "frame",
+             "widget_name": "top_row_frame",
+             "pack_config": "side='top', fill='x'"},
+        
+            # 2. Pack the first label against the left side of the frame.
             {"type": "label",
+             "parent": "top_row_frame",
+             "config": "text='Closing in', foreground='red', font='Helvetica 12'",
+             "pack_config": "side='left', padx=(5,0), pady=5"},
+        
+            # 3. Pack the countdown label next to it, also on the left.
+            {"type": "label",
+             "parent": "top_row_frame",
              "widget_name": "countdown_label",
-             "config": "text='Closing in: 60s', foreground='red', font='Helvetica 12'",
-             "grid_config": "row=0, column=0, sticky='w', padx=5, pady=5"},
-
+             "config": "text=': 60s', foreground='red', font='Helvetica 12'",
+             "pack_config": "side='left', padx=(0,5), pady=5",
+             "translate": False},
+        
+            # 4. Pack the button against the right side of the frame.
             {"type": "button",
+             "parent": "top_row_frame",
              "widget_name": "reveal_button",
              "config": "text='Reveal 2FA Token'",
-             "grid_config": "row=0, column=1, sticky='e', padx=5, pady=5",
+             "pack_config": "side='right', padx=5, pady=5",
              "command": "command_str='handle_click'"},
-
+        
+            # --- QR Code Label ---
+            # This is a simple vertical element, so no frame is needed.
             {"type": "label",
              "widget_name": "qr_label",
-             "grid_config": "row=1, column=0, columnspan=2, pady=10"},
-
+             # It will center by default since it doesn't fill the space.
+             "pack_config": "side='top', pady=10"},
+        
+            # --- Secret Entry ---
+            # This spans the full width (sticky='ew' -> fill='x')
             {"type": "entry",
              "widget_name": "secret_entry",
              "style_map_config":"style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
              "config": "style='addressInfo.TEntry', state='readonly', font='Helvetica 12 bold', justify='center'",
              "variables": {"expand_entry_width": True},
-             "grid_config": "row=2, column=0, columnspan=2, pady=5, padx=10, sticky='ew'",
+             "pack_config": "side='top', fill='x', pady=5, padx=10",
              "binds": [{"bind_config": "event='<Button-3>', callback_str='self.callbacks[\"handle_context_menu\"]'"},
                        {"bind_config": "event='<Double-1>', callback_str='self.callbacks[\"handle_double_click\"]'"},
                        {"bind_config": "event='<Control-c>', callback_str='self.callbacks[\"handle_copy\"]'"},
                        {"bind_config": "event='<Control-a>', callback_str='self.callbacks[\"handle_select_all\"]'"}]},
-
+        
+            # --- Message Label ---
+            # Also spans the full width. We use fill='x' so wraplength works correctly.
             {"type": "label",
              "widget_name": "message_label",
              "config": "text='To enable 2FA, scan the QR code with an authenticator app, then provide the one-time code.', wraplength=400, justify='center'",
-             "grid_config": "row=3, column=0, columnspan=2, padx=10, pady=10"},
-
+             "pack_config": "side='top', fill='x', padx=10, pady=10"},
+        
+            # --- Setup Trigger ---
+            # This is a non-visual widget. Just packing it is enough for the command to execute.
             {"type": "label",
              "widget_name": "setup_trigger",
-              "config": "",
-              "command": "command_str='initial_setup', args='(self,)', execute_on_load=True",
-              "grid_config": "row=4"}
+             "config": "",
+             "command": "command_str='initial_setup', args='(self,)', execute_on_load=True",
+             "pack_config": "side='top'"}
         ]
 
         # Map the string names in the prompt to the actual functions.
@@ -1445,7 +1531,6 @@ class DialogFunctions:
     def toggle_continue_button_state(self, checkbox=None, continue_button=None):
         """
         The CORE LOGIC. Enables or disables a button based on a checkbox.
-        This function remains unchanged.
         """
         if checkbox and continue_button:
             if checkbox.instate(['selected']):
@@ -1520,11 +1605,11 @@ class DialogFunctions:
 
     def update_view_loop(self, dialog, label):
         """
-        ## THE MISSING PIECE ##
         The recurring loop that reads the shared timer state and updates the label.
         """
         try:
-            if not dialog.dialog.winfo_exists(): return
+            if not dialog.dialog.winfo_exists():
+                return
 
             # Read the time remaining from the shared state controlled by wait_for_input.
             time_remaining = self.root.stored_data.input_listener_time_remaining
@@ -1656,7 +1741,9 @@ class DialogFunctions:
             try:
                 if self.root.dialog_instance and self.root.dialog_instance.dialog.winfo_exists():
                     countdown_label = self.root.dialog_instance.widget_references.get('countdown_label')
-                    if countdown_label: countdown_label.config(text=f"Closing in: {self.root.countdown}s")
+                    if countdown_label: 
+                        with self.parent.root.translation_engine.no_translate():
+                            countdown_label.config(text=f": {self.root.countdown}s")
                     self.root.countdown -= 1
                     self.root._timer_id = self.root.dialog_instance.dialog.after(1000, self._2FA_update_timer)
             except tk.TclError:
@@ -1674,7 +1761,8 @@ class DialogFunctions:
         secret_entry.config(state='normal')
         secret_entry.delete(0, 'end')
         if self.root.reveal_secret:
-            secret_entry.insert(0, self.root.totp_secret)
+            with self.parent.root.translation_engine.no_translate():
+                secret_entry.insert(0, self.root.totp_secret)
             reveal_btn.config(text="Hide 2FA Token")
             secret_entry.config(takefocus=1)
         else:

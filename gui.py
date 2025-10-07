@@ -3,7 +3,7 @@ import os
 import re
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, simpledialog, messagebox, Menu, font
+from tkinter import ttk, scrolledtext, filedialog, messagebox, font
 from tktooltip import ToolTip
 
 import ttkbootstrap as tb
@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 import webbrowser
 from datetime import datetime
+import logging
+
 
 # Get the absolute path of the directory containing the current script.
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -35,6 +37,28 @@ from denaro.wallet.utils.tkinter_utils.custom_dialog import CustomDialog
 from denaro.wallet.utils.tkinter_utils.dialogs import Dialogs
 from denaro.wallet.utils.tkinter_utils.custom_popup import CustomPopup
 from denaro.wallet.utils.thread_manager import WalletThreadManager
+
+#from denaro.wallet.utils.tkinter_utils.language_translation_google import activate_tkinter_translation
+#engine = activate_tkinter_translation(target_language='de')
+import denaro.wallet.utils.tkinter_utils.universal_language_translator as universal_language_translator
+
+# Patterns for SENSITIVE data that must be redacted from logs and securely deleted.
+sensitive_patterns = [
+    re.compile(wallet_client.ADDRESS_PATTERN), # Denaro Wallet Address
+    re.compile(r'^(\b\w+\b\s+){11}\b\w+\b$'),  # 12-word Mnemonic
+    re.compile(r'^(\b\w+\b\s+){23}\b\w+\b$'),  # 24-word Mnemonic
+    re.compile(r'^(0x)?[0-9a-fA-F]{32,}$'),    # Long Hex (Private Keys, Hashes)
+]
+        
+# Patterns for NON-SENSITIVE data that should simply not be translated.
+non_translatable_patterns = [
+    re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$'),     # IP Addresses
+    re.compile(r'^(https?://|ftp://|www\.)[^\s]+$'),                # URLs
+    re.compile(r'^Denaro Wallet Client v[0-9\.\-a-zA-Z]+\sGUI.*$'), # App Title
+     re.compile(r'^العربية|中文|English|Français|Deutsch|हिन्दी|Italiano|日本語|Polski|Português|Русский|Español|Türkçe'), # Language Names
+]
+
+
 
 class BasePage(ttk.Frame):
     def __init__(self, parent, root, *args, **kwargs):
@@ -309,8 +333,7 @@ class SendPage(BasePage):
 
 
     def validate_recipient_address(self, content):
-        address_pattern = r'^[DE][1-9A-HJ-NP-Za-km-z]{44}$'
-        if re.match(address_pattern, content):
+        if re.match(wallet_client.ADDRESS_PATTERN, content):
             return True
         return False
     
@@ -374,10 +397,17 @@ class SendPage(BasePage):
 class SettingsPage(BasePage):
     def __init__(self, parent, root):
         super().__init__(parent, root)
+        # Currency related attributes
         self.prev_currency_code = None
         self.currency_code_valid = False
         self.currency_code = ""
         self.currency_symbol = ""
+
+        # --- Language related attributes ---
+        self.prev_language = None
+        self.language_valid = False
+        self.language = ""
+        # ----------------------------------------
 
         self.keep_save_button_disabled = False
 
@@ -417,6 +447,13 @@ class SettingsPage(BasePage):
         self.denaro_node_frame.columnconfigure(0, weight=1)
         self.denaro_node_frame.columnconfigure(1, weight=0)  # Minimal weight to colon column
         self.denaro_node_frame.columnconfigure(2, weight=1)
+        
+        # --- Position the language widgets ---
+        self.language_frame.grid(row=2, column=0, sticky='ew', padx=10)
+        self.language_label.pack(side='left', padx=5, pady=5)
+        self.language_combobox.pack(side='left', padx=5, pady=5)
+        self.valid_language_label.pack(side='left', padx=5, pady=5) # Position the new label
+        # ---------------------------------------------
 
         # Save config button
         self.save_config_frame.grid(row=4, column=0, sticky='we', padx=10)
@@ -455,7 +492,7 @@ class SettingsPage(BasePage):
             #Validate currency code on each write
             self.currency_code_combobox.var.trace_add("write", self.validate_currency_code)
 
-        self.denaro_node_frame = tb.LabelFrame(self, text="Denaro Node Config:",width=20)
+        self.denaro_node_frame = tb.LabelFrame(self, text="Denaro Node Configuration", width=20)
         self.denaro_node_address_label = tb.Label(self.denaro_node_frame, text="Address")        
         self.denaro_node_address_frame = tb.Frame(self.denaro_node_frame)
         self.denaro_node_address_entry = tb.Entry(self.denaro_node_address_frame, validate="focusout", width=30)#, state='disabled')
@@ -470,8 +507,7 @@ class SettingsPage(BasePage):
         self.denaro_node_port_entry = tb.Entry(self.denaro_node_port_frame, validate="focusout", width=30)
         self.denaro_node_port_entry_text = tb.StringVar()
         self.denaro_node_port_entry_text.trace_add("write", self.on_node_field_change)
-        self.denaro_node_port_entry["textvariable"] = self.denaro_node_port_entry_text
-        
+        self.denaro_node_port_entry["textvariable"] = self.denaro_node_port_entry_text       
         
         self.disable_node_validation_checkbox = tk.Checkbutton(self.denaro_node_frame, text='Disable Node Validation')
         self.disable_node_validation_var = tk.BooleanVar()
@@ -481,6 +517,40 @@ class SettingsPage(BasePage):
         self.test_connection_button = tb.Button(self.denaro_node_frame, text="Test Connection")
         self.test_connection_button.config(command=lambda: self.test_node_connection())
         
+        # --- Language widget creation ---
+        self.language_frame = tb.Frame(self)
+        self.language_label = tb.Label(self.language_frame, text="Language:")
+    
+        # Map of stable internal keys (English) to user-facing display names (Native)
+        self.language_map = {
+            'ar': "العربية",
+            'zh': "中文",
+            'en': "English",
+            'fr': "Français",
+            'de': "Deutsch",
+            'hi': "हिन्दी",
+            'it': "Italiano",
+            'ja': "日本語",
+            'pl': "Polski",
+            'pt': "Português",
+            'ru': "Русский",
+            'es': "Español",
+            'tr': "Türkçe"
+        }        
+        
+        # The combobox uses the display names (the dictionary values)
+        #with translation_engine.no_translate():
+        self.language_display_names = list(self.language_map.values())
+        self.language_combobox = AutocompleteCombobox(self.language_frame, width=20, completevalues=self.language_display_names, state='normal')
+    
+        # Validate language on init
+        self.after(100, self.validate_language)
+        # Validate language on each write
+        self.language_combobox.var.trace_add("write", self.validate_language)
+        
+        self.valid_language_label = tb.Label(self.language_frame)
+        # ------------------------------------------
+
         # Save config button
         self.save_config_frame = tb.Frame(self)
         self.node_validation_msg_label = tb.Label(self.save_config_frame, text="")
@@ -513,13 +583,41 @@ class SettingsPage(BasePage):
             # Update last valid selection
             #last_valid_selection = currency_code_combobox.current()
             self.prev_currency_code = self.current_selection        
+            self.update_save_button_state() # Update button state on validation change
 
         if not self.currency_code_combobox['values'][0] == self.separators[0]:
             self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[0], 0)
         if not self.currency_code_combobox['values'][162] == self.separators[1]:
             self.root.gui_utils.add_combobox_separator_at_index(self.currency_code_combobox, self.separators[1], 162)
-        self.on_node_field_change()
 
+
+    # --- Language validation method ---
+    def validate_language(self, *args):
+        # The value from the combobox is the display name (e.g., "Deutsch")
+        current_display_name = self.language_combobox.get()
+    
+        # Use the display name for the change-check to prevent re-validation loops
+        if current_display_name != self.prev_language:
+            # Validate that the display name is one of the valid options
+            if current_display_name in self.language_map.values():
+                self.language_valid = True
+                self.valid_language_label.config(text="Valid Language ✓", foreground='green')                
+                # Find the corresponding language code (e.g., "de") to store internally
+                for code, name in self.language_map.items():
+                    if name == current_display_name:
+                        # self.language now holds the language code
+                        self.language = code
+                        break
+            else:
+                self.language_valid = False
+                self.valid_language_label.config(text="Invalid Language ✖", foreground='red')
+                # Fallback to the English language code
+                self.language = "en"
+    
+            # prev_language should track the display name
+            self.prev_language = current_display_name
+            self.update_save_button_state()
+    # ----------------------------------------
 
     def validate_node_fields(self, *args):
         
@@ -592,28 +690,34 @@ class SettingsPage(BasePage):
         # Checks for changes in settings compared to the current configuration
         current_config = self.root.config_handler.config_values
         
+        # --- UPDATED: Get language and check for changes ---
+        language_selection = self.language_combobox.get().strip()
+        language_changed = (language_selection != current_config.get('language'))
+        # ----------------------------------------------------
+        
         if not self.root.disable_exchange_rate_features:
             currency_code = self.currency_code_combobox.get().strip()
+            currency_code_changed = (currency_code != current_config.get('default_currency'))
 
         node_address = self.denaro_node_address_entry.get().strip()
         node_port = self.denaro_node_port_entry.get().strip()
 
         # Construct the address:port string conditionally including the port
         node = f"{node_address}:{node_port}" if node_port else node_address
-        node_validation = not self.disable_node_validation_var.get()
-        
-        if not self.root.disable_exchange_rate_features:
-            currency_code_changed = (currency_code != current_config.get('default_currency'))
-
         node_changed = (node != current_config.get('default_node', ''))
+        node_validation = not self.disable_node_validation_var.get()
         node_validation_changed = (str(node_validation) != current_config.get('node_validation', ''))
-        #fields_empty = not node_address  # Only check if address is empty since port is optional
-        #print(currency_code_changed, node_changed, not fields_empty)
         
+        # --- UPDATED: Final check for enabling save button ---
         if self.root.disable_exchange_rate_features:
-            settings_changed = (node_changed or node_validation_changed) and not self.keep_save_button_disabled
+            # Check for changes and ensure language is valid
+            settings_changed = self.language_valid and (node_changed or node_validation_changed or language_changed) and not self.keep_save_button_disabled
         else:
-            settings_changed = self.currency_code_valid and (currency_code_changed or node_changed or node_validation_changed) and not self.keep_save_button_disabled
+            # Check for changes and ensure BOTH currency and language are valid
+            settings_changed = (self.currency_code_valid and self.language_valid) and \
+                               (currency_code_changed or node_changed or node_validation_changed or language_changed) and \
+                               not self.keep_save_button_disabled
+        # --------------------------------------------------------
         return settings_changed
     
 
@@ -626,6 +730,10 @@ class BlankPage(BasePage):
 class DenaroWalletGUI(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.config_handler = ConfigHandler(self)
+        self.language = self.config_handler.config_values.get('language', 'en')
+        self.translation_engine = universal_language_translator.activate_tkinter_translation(target_language=self.language, sensitive_patterns=sensitive_patterns, non_translatable_patterns=non_translatable_patterns)
+
         self.wallet_client_version = f"{wallet_client.wallet_client_version} GUI"
         self.title(self.wallet_client_version)
         self.geometry("1024x576")
@@ -634,6 +742,7 @@ class DenaroWalletGUI(tk.Tk):
         self.iconphoto(True, icon)
 
         self.pages = {}
+        self.sidebar_buttons = {}
         self.current_page = None
         self.selectable_widgets = []
         self.active_button = None
@@ -647,8 +756,8 @@ class DenaroWalletGUI(tk.Tk):
         self.wallet_operations = WalletOperations(self)
         self.dialogs = Dialogs(self)
         self.custom_popup = CustomPopup(self)
-        self.config_handler = ConfigHandler(self)
         
+        self.menu_items = {}
         self.create_menus()             
         self.configure_styles()
         self.create_main_content_area()
@@ -665,44 +774,74 @@ class DenaroWalletGUI(tk.Tk):
         
         self.config_handler.update_config_values()
         
+    
+    def _add_menu_item(self, parent_menu, item_type, key, **kwargs):
+        # ... implementation from previous step ...
+        add_method = getattr(parent_menu, f"add_{item_type}")
+        add_method(**kwargs)
+        if key and item_type != 'separator':
+            index = parent_menu.index('end')
+            self.menu_items[key] = (parent_menu, index)
 
+    def set_menu_item_state(self, item_key, state):
+        """Sets the state of a menu item using its stable key."""
+        if item_key in self.menu_items:
+            menu, index = self.menu_items[item_key]
+            current_state = str(menu.entrycget(index, 'state'))
+            if current_state != state:
+                menu.entryconfig(index, state=state)
+        else:
+            print(f"WARNING: Attempted to configure unknown menu item key: '{item_key}'")
+
+    def get_menu_item_state(self, item_key):
+        """Gets the state of a menu item using its stable key."""
+        if item_key in self.menu_items:
+            menu, index = self.menu_items[item_key]
+            return str(menu.entrycget(index, 'state'))
+        else:
+            print(f"WARNING: Attempted to get state of unknown menu item key: '{item_key}'")
+            return None
+                
     def create_menus(self):
         # Context Menu for Textboxes
         self.textboxes_context_menu = tb.Menu(self, tearoff=0)
-        self.textboxes_context_menu.add_command(label="Cut", command=self.gui_utils.cut_text)
-        self.textboxes_context_menu.add_command(label="Copy", command=self.gui_utils.copy_selection)
-        self.textboxes_context_menu.add_command(label="Paste", command=self.gui_utils.paste_text)
-        self.textboxes_context_menu.add_command(label="Delete", command= lambda: self.gui_utils.cut_text(delete=True))
-        self.textboxes_context_menu.add_command(label="Select All", command=self.gui_utils.select_all_text)       
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_cut',    label="Cut",        command=self.gui_utils.cut_text)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_copy',   label="Copy",       command=self.gui_utils.copy_selection)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_paste',  label="Paste",      command=self.gui_utils.paste_text)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_delete', label="Delete",     command=lambda: self.gui_utils.cut_text(delete=True))
+        self._add_menu_item(self.textboxes_context_menu, 'separator', None) # No key needed for separators
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_select_all', label="Select All", command=self.gui_utils.select_all_text)
         
         # Context Menu for Treeview
         self.treeview_context_menu = tb.Menu(self, tearoff=0)
-        self.treeview_context_menu.add_command(label="Copy", command=self.gui_utils.copy_selection)
-        self.treeview_context_menu.add_command(label="Send", command=lambda: (self.gui_utils.address_context_menu_selection(set_address_combobox=True, show_send_page=True)))
-        self.treeview_context_menu.add_command(label="Address Info", command=self.dialogs.address_info)
-        self.treeview_context_menu.add_command(label="View on Explorer",  command=lambda: self.gui_utils.address_context_menu_selection(view_explorer=True))
-
-        #Menu Bar
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_copy',     label="Copy",             command=self.gui_utils.copy_selection)
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_send',     label="Send",             command=lambda: self.gui_utils.address_context_menu_selection(set_address_combobox=True, show_send_page=True))
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_addr_info',label="Address Information",     command=self.dialogs.address_info)
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_explorer', label="View on Explorer", command=lambda: self.gui_utils.address_context_menu_selection(view_explorer=True))
+        
+        # Menu Bar
         self.menu_bar = tb.Menu(self, tearoff=0)
         self.file_menu = tb.Menu(self.menu_bar, tearoff=0)
-        self.wallet_menu = tb.Menu(self.file_menu, tearoff=0)
+        self.wallet_menu = tb.Menu(self.file_menu, tearoff=0) # This is for the "Load Wallet" cascade
         self.help_menu = tb.Menu(self.menu_bar, tearoff=0)
-
-        self.menu_bar.add_cascade(label="File", menu=self.file_menu)
-        self.file_menu.add_cascade(label="Load Wallet", menu=self.wallet_menu)
-        self.file_menu.add_command(label="Create Wallet", command=self.dialogs.create_wallet_dialog)
-        self.file_menu.add_command(label="Restore Wallet")
-        self.file_menu.add_command(label="Backup Wallet")
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Generate Address", command = lambda: self.wallet_thread_manager.start_thread("generate_address", self.wallet_operations.generate_address, args=(), ), state='disabled')
-        self.file_menu.add_command(label="Import Address")
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Close Wallet", command=self.gui_utils.close_wallet)
         
-        self.menu_bar.add_cascade(label="Help", menu=self.help_menu)
-        self.help_menu.add_command(label="About", command=self.dialogs.about_wallet_dialog)
-
-
+        # Build the File menu
+        self._add_menu_item(self.menu_bar, 'cascade', 'file_menu', label="File", menu=self.file_menu)
+        self._add_menu_item(self.file_menu, 'cascade', 'load_wallet_menu', label="Load Wallet", menu=self.wallet_menu)
+        self._add_menu_item(self.file_menu, 'command', 'create_wallet', label="Create Wallet", command=self.dialogs.create_wallet_dialog)
+        self._add_menu_item(self.file_menu, 'command', 'restore_wallet', label="Restore Wallet") # Add command later
+        self._add_menu_item(self.file_menu, 'command', 'backup_wallet', label="Backup Wallet", state='disabled')
+        self._add_menu_item(self.file_menu, 'separator', None)
+        self._add_menu_item(self.file_menu, 'command', 'generate_address', label="Generate Address", command=lambda: self.wallet_thread_manager.start_thread("generate_address", self.wallet_operations.generate_address, args=()), state='disabled')
+        self._add_menu_item(self.file_menu, 'command', 'import_address', label="Import Address", state='disabled')
+        self._add_menu_item(self.file_menu, 'separator', None)
+        self._add_menu_item(self.file_menu, 'command', 'close_wallet', label="Close Wallet", command=self.gui_utils.close_wallet, state='disabled')
+        
+        # Build the Help menu
+        self._add_menu_item(self.menu_bar, 'cascade', 'help_menu', label="Help", menu=self.help_menu)
+        self._add_menu_item(self.help_menu, 'command', 'about', label="About", command=self.dialogs.about_wallet_dialog)
+        
+        # Final configuration
         self.config(menu=self.menu_bar)
         self.gui_utils.update_wallet_menu()
     
@@ -800,36 +939,45 @@ class DenaroWalletGUI(tk.Tk):
 
 
     def create_sidebar_button(self, name):
-        # Adjust this method to dynamically show pages
-        self.button_frame = tb.Frame(self.left_frame_inner, padding=(0,0), style="gray.TFrame")
-        self.button_frame.pack(fill=tk.X)
-        button = tb.Button(self.button_frame, text=name, style="menuButtonInactive.TButton", command=lambda name=name: [self.show_page(name), self.gui_utils.activate_button(button)])
+        button_frame = tb.Frame(self.left_frame_inner, padding=(0,0), style="gray.TFrame")
+        button_frame.pack(fill=tk.X)
+        
+        # The command is now simpler, it only needs to show the page.
+        button = tb.Button(button_frame, text=name, style="menuButtonInactive.TButton", 
+                           command=lambda page_name=name: self.show_page(page_name))
         button.pack(fill=tk.X, pady=(0, 2))
+        
+        # Store the button in our dictionary using its stable name as the key.
+        self.sidebar_buttons[name] = button
      
 
     def show_page(self, page_name):
-        button = self.gui_utils.find_button_by_text(self.left_frame_inner, page_name)
-        if button != self.active_button:
+        # Instant lookup from our dictionary. No more searching by text!
+        button = self.sidebar_buttons.get(page_name)
+    
+        # We still call activate_button to handle the visual style change.
+        if button and button != self.active_button:
             self.gui_utils.activate_button(button)
-
+    
+        # The rest of the function remains the same.
         if self.current_page:
             self.current_page.forget()        
-
+    
         page = self.pages.get(page_name)
-
+    
         if not page:
-            if page_name == "Account":
-                page = AccountPage(self.page_container, self)
-            elif page_name == "Send":
-                page = SendPage(self.page_container, self)
-            elif page_name == "Settings":
-                page = SettingsPage(self.page_container, self)
-            else:
-                page = BlankPage(self.page_container, self)
+            # Simplified this logic slightly
+            page_class_map = {
+                "Account": AccountPage,
+                "Send": SendPage,
+                "Settings": SettingsPage
+            }
+            page_class = page_class_map.get(page_name, BlankPage)
+            page = page_class(self.page_container, self)
             
             self.pages[page_name] = page
             page.grid(row=0, column=0, sticky="nsew")
-
+    
         self.current_page = page
         page.tkraise()
 
@@ -876,6 +1024,7 @@ class DenaroWalletGUI(tk.Tk):
         self.progress_bar.pack(side=tk.RIGHT, padx=(5,15))
         self.stop_button.pack(side=tk.RIGHT)
 
+
 class ConfigHandler:
 
     def __init__(self, root):
@@ -920,14 +1069,33 @@ class ConfigHandler:
                     self.root.settings_page.disable_node_validation_var.set(False)
                 if self.root.stored_data.node_validation == "False":
                     self.root.settings_page.disable_node_validation_var.set(True)
-    
+            
+            # --- NEW: Handle Language Setting on Load ---
+            if 'language' in self.config_values:
+                # The config stores the language code (e.g., "de")
+                language_code = self.config_values.get('language')
+                    
+                # Look up the display name (e.g., "Deutsch") from the map
+                # Provide the English display name as a fallback if the code is invalid
+                display_name = self.root.settings_page.language_map.get(language_code, "English")
+                    
+                # Set the combobox to the display name
+                self.root.settings_page.language_combobox.set(display_name)
+                # Call validation to sync the internal state (sets self.language to the code)
+                self.root.settings_page.validate_language()
+                    
+            else:
+                # If no language is set in config, default to English
+                self.root.settings_page.language_combobox.set("English")
+                self.root.settings_page.validate_language()
+            # --------------------------------------------
 
     def save_config(self):
         #self.root.settings_page.node_validation_msg_label.config(text="")
         
         if not self.root.settings_page.denaro_node_address_entry.get().strip():
             self.root.settings_page.denaro_node_address_entry.delete(0, 'end')
-            self.root.settings_page.denaro_node_address_entry.insert(0, "https://denaro-node.gaetano.eu.org")
+            self.root.settings_page.denaro_node_address_entry.insert(0, "http://localhost:3006")
             self.root.settings_page.denaro_node_port_entry.delete(0, 'end')
         
         node, string_valid, node_validation_enabled = self.root.settings_page.validate_node_fields()
@@ -936,15 +1104,22 @@ class ConfigHandler:
             # Configuration saving logic needs to consider the optional port in validation
             if self.root.settings_page.check_setting_changes():
                 if not self.root.disable_exchange_rate_features:
-                    if self.config_values['default_currency'] != self.root.stored_data.currency_code:
+                    if self.config_values.get('default_currency') != self.root.stored_data.currency_code:
                         self.config_values['default_currency'] = self.root.stored_data.currency_code
                 
-                if self.config_values['default_node'] != node:
+                # --- Handle Language Setting on Save ---
+                # Use the validated language from the settings page
+                if self.config_values.get('language') != self.root.settings_page.language:
+                    self.config_values['language'] = self.root.settings_page.language
+                    self.root.translation_engine.set_language(self.config_values['language'])
+                # ------------------------------------------
+
+                if self.config_values.get('default_node') != node:
                     self.config_values['default_node'] = node
                     self.root.stored_data.node_valid = False
                     self.root.stored_data.node_validation_performed = False
 
-                if self.config_values['node_validation'] != str(not node_validation_enabled):
+                if self.config_values.get('node_validation') != str(not node_validation_enabled):
                     self.config_values['node_validation'] = str(not node_validation_enabled)
                     self.root.stored_data.node_valid = False
                     self.root.stored_data.node_validation_performed = False
@@ -978,6 +1153,7 @@ class EventHandler:
         self.stop_loading_wallet = False
         self.stop_getting_balance = False
 
+        # This previous_states dictionary is perfectly fine as it uses stable keys.
         self.previous_states = {
             'send_page': None,
             'balance_button': None,
@@ -993,13 +1169,21 @@ class EventHandler:
             'progress_bar': None
         }
 
+        # This list of keys will make our code much cleaner.
+        self.file_menu_keys = [
+            'load_wallet_menu', 'create_wallet', 'restore_wallet', 'backup_wallet',
+            'generate_address', 'import_address', 'close_wallet'
+        ]
+
         self.event_listener()
         self.progress_bar_listener()
 
+    # event_listener, progress_bar_listener, and many others don't need changes
+    # because they don't reference menu items by string. We will only change
+    # the methods that do.
     def event_listener(self):
         """Updates certain GUI elements based on what event is taking place"""
         self.thread_event = list(self.root.wallet_thread_manager.threads.keys())
-        #print(self.thread_event)
             
         if 'load_wallet' in self.thread_event:
             self.set_loading_wallet_state()
@@ -1045,14 +1229,12 @@ class EventHandler:
 
     def set_loading_wallet_state(self):
         if self.previous_states['balance_button'] != 'disabled':
-            #print("Disabling balance button")
             self.root.account_page.refresh_balance_button.config(state='disabled')
             self.previous_states['balance_button'] = 'disabled'
 
-        self.set_send_page_state('disabled')        
+        self.set_send_page_state('disabled')
         self.set_all_file_menu_items('disabled')
        
-
     def update_wallet_state(self):
         if self.root.stored_data.wallet_loaded:
             self.update_wallet_loaded_state()
@@ -1069,21 +1251,15 @@ class EventHandler:
         else:
             if not self.root.disable_exchange_rate_features:
                 self.set_currency_combobox_state('disabled')
+        
+        create_wallet_state = self.root.get_menu_item_state('create_wallet')
+        generate_address_state = self.root.get_menu_item_state('generate_address')
 
-        if 'create_wallet' not in self.thread_event:
-            if 'generate_address' not in self.thread_event:
-                if str(self.root.file_menu.entryconfig('Create Wallet')['state'][4]) == 'disabled':
-                    self.set_all_file_menu_items('normal')
+        if 'create_wallet' not in self.thread_event and 'generate_address' not in self.thread_event:
+            if create_wallet_state == 'disabled' or generate_address_state == 'disabled':
+                self.set_all_file_menu_items('normal')
         else:
-            if str(self.root.file_menu.entryconfig('Create Wallet')['state'][4]) == 'normal':
-                self.set_all_file_menu_items('disabled')
-
-        if 'generate_address' not in self.thread_event:
-            if 'create_wallet' not in self.thread_event:
-                if str(self.root.file_menu.entryconfig('Generate Address')['state'][4]) == 'disabled':
-                    self.set_all_file_menu_items('normal')
-        else:
-            if str(self.root.file_menu.entryconfig('Generate Address')['state'][4]) == 'normal':
+            if create_wallet_state == 'normal' or generate_address_state == 'normal':
                 self.set_all_file_menu_items('disabled')
 
     def update_wallet_not_loaded_state(self):
@@ -1091,17 +1267,18 @@ class EventHandler:
             self.update_status_bar("No Wallet Loaded")
 
         self.set_send_page_state('disabled')
-
+        
         if 'create_wallet' not in self.thread_event:
-            self.set_menu_item_state('Load Wallet', 'normal')
-            self.set_menu_item_state('Create Wallet', 'normal')
-            self.set_menu_item_state('Restore Wallet', 'normal')
-            self.set_menu_item_state('Backup Wallet', 'disabled')
-            self.set_menu_item_state('Generate Address', 'disabled')
-            self.set_menu_item_state('Import Address', 'disabled')
-            self.set_menu_item_state('Close Wallet', 'disabled')
+            # Note: The key for the 'Load Wallet' cascade is 'load_wallet_menu'
+            self.root.set_menu_item_state('load_wallet_menu', 'normal') 
+            self.root.set_menu_item_state('create_wallet', 'normal')
+            self.root.set_menu_item_state('restore_wallet', 'normal')
+            self.root.set_menu_item_state('backup_wallet', 'disabled')
+            self.root.set_menu_item_state('generate_address', 'disabled')
+            self.root.set_menu_item_state('import_address', 'disabled')
+            self.root.set_menu_item_state('close_wallet', 'disabled')
         else:
-            if str(self.root.file_menu.entryconfig('Create Wallet')['state'][4]) == 'normal':
+            if self.root.get_menu_item_state('create_wallet') == 'normal':
                 self.set_all_file_menu_items('disabled') 
 
     def update_wallet_load_balance_state(self):
@@ -1114,12 +1291,10 @@ class EventHandler:
             self.update_status_bar(status_message)
 
         if str(self.root.account_page.refresh_balance_button["state"]) == "disabled":
-            #print("Enabling balance button")
             self.root.account_page.refresh_balance_button.config(state='normal')
             self.previous_states['balance_button'] = 'normal'
 
         if self.root.stored_data.operation_mode is None and self.root.progress_bar["value"] != 0:
-            #print("Resetting progress bar")
             self.root.progress_bar.config(maximum=0, value=0)
 
     def update_operation_mode_status(self):
@@ -1137,7 +1312,6 @@ class EventHandler:
         self.price_timer_step += 1
         if self.price_timer_step >= 10:
             self.price_timer -= 1
-           # print(f"Updating DNR price timer: {self.price_timer}")
             self.root.gui_utils.update_dnr_price(self.price_timer)
             self.price_timer_step = 0
         if self.price_timer <= 0:
@@ -1145,13 +1319,11 @@ class EventHandler:
 
     def update_status_bar(self, message):
         if self.previous_states['status_bar'] != message:
-            #print(f"Updating status bar: {message}")
             self.root.gui_utils.update_status_bar(message)
             self.previous_states['status_bar'] = message
 
     def set_send_page_state(self, state):
         if self.previous_states['send_page'] != state:
-            #print(f"Setting send page state: {state}")
             self.root.send_page.amount_entry.config(state=state)
             self.root.send_page.recipient_entry.config(state=state)
             self.root.send_page.message_entry.config(state=state)
@@ -1163,40 +1335,13 @@ class EventHandler:
 
     def set_currency_combobox_state(self, state):
         if self.previous_states['currency_combobox'] != state:
-            #print(f"Setting currency combobox state: {state}")
             self.root.settings_page.currency_code_combobox.config(state=state)
             self.previous_states['currency_combobox'] = state
-    
+
     def set_all_file_menu_items(self, state):
-        self.set_menu_item_state('Load Wallet', state)
-        self.set_menu_item_state('Create Wallet', state)
-        self.set_menu_item_state('Restore Wallet', state)
-        self.set_menu_item_state('Backup Wallet', state)
-        self.set_menu_item_state('Generate Address', state)
-        self.set_menu_item_state('Import Address', state)
-        self.set_menu_item_state('Close Wallet', state)
-
-    def set_menu_item_state(self, item, state):
-        current_state = str(self.root.file_menu.entryconfig(item)['state'][4])
-        if current_state != state:
-            #print(f"Setting menu item '{item}' state: {state}")
-            self.root.file_menu.entryconfig(item, state=state)
-
-
-            if item == 'Load Wallet':
-                self.previous_states['load_wallet_menu_item'] = state
-            elif item == 'Create Wallet':
-                self.previous_states['create_wallet_menu_item'] = state
-            elif item == 'Restore Wallet':
-                self.previous_states['restore_wallet_menu_item'] = state
-            elif item == 'Backup Wallet':
-                self.previous_states['backup_wallet_menu_item'] = state
-            elif item == 'Generate Address':
-                self.previous_states['generate_address_menu_item'] = state
-            elif item == 'Import Address':
-                self.previous_states['import_address_menu_item'] = state
-            elif item == 'Close Wallet':
-                self.previous_states['close_wallet_menu_item'] = state
+        """Sets all tracked file menu items to a given state using their keys."""
+        for key in self.file_menu_keys:
+            self.root.set_menu_item_state(key, state)
 
 
 class GUIUtils:
@@ -1281,58 +1426,73 @@ class GUIUtils:
 
 
     def show_context_menu(self, event):
+        # Get references to the context menus from the root window
         textboxes_context_menu = self.root.textboxes_context_menu
         treeview_context_menu = self.root.treeview_context_menu
-
+    
         self.root.current_event = event
         widget = event.widget
-
+    
         try:
             if isinstance(widget, (tk.Entry, AutocompleteCombobox)):
-                try:
-                    if str(widget["state"]) == "readonly":
-                        textboxes_context_menu.entryconfig("Cut", state="disabled")
-                        textboxes_context_menu.entryconfig("Paste", state="disabled")
-                        textboxes_context_menu.entryconfig("Delete", state="disabled")
-                    else:
-                        textboxes_context_menu.entryconfig("Cut", state="normal")
-                        textboxes_context_menu.entryconfig("Paste", state="normal")
-                        textboxes_context_menu.entryconfig("Delete", state="normal")
-                except tk.TclError:
-                    textboxes_context_menu.entryconfig("Cut", state="normal")
-                    textboxes_context_menu.entryconfig("Paste", state="normal")
-                    textboxes_context_menu.entryconfig("Delete", state="normal")
-                finally:
-                    self.root.current_event = event
-                    textboxes_context_menu.tk_popup(event.x_root + 1, event.y_root + 1)
+                # Determine the state based on widget properties
+                can_modify = str(widget.cget("state")) != "readonly"
+                
+                # Use the stable keys and the helper method on the root window
+                self.root.set_menu_item_state('ctx_cut', 'normal' if can_modify else 'disabled')
+                self.root.set_menu_item_state('ctx_paste', 'normal' if can_modify else 'disabled')
+                self.root.set_menu_item_state('ctx_delete', 'normal' if can_modify else 'disabled')
+                
+                # The 'Copy' and 'Select All' commands are always available for any selectable text
+                self.root.set_menu_item_state('ctx_copy', 'normal')
+                self.root.set_menu_item_state('ctx_select_all', 'normal')
+    
+                textboxes_context_menu.tk_popup(event.x_root + 1, event.y_root + 1)
             
             elif isinstance(widget, (tk.Text, scrolledtext.ScrolledText)):
-                textboxes_context_menu.entryconfig("Cut", state="disabled")
-                textboxes_context_menu.entryconfig("Paste", state="disabled")
-                textboxes_context_menu.entryconfig("Delete", state="disabled")
-                self.root.current_event = event
-                textboxes_context_menu.tk_popup(event.x_root+1, event.y_root+1)
+                # For read-only text widgets, only copy and select all are available
+                self.root.set_menu_item_state('ctx_cut', 'disabled')
+                self.root.set_menu_item_state('ctx_paste', 'disabled')
+                self.root.set_menu_item_state('ctx_delete', 'disabled')
+                self.root.set_menu_item_state('ctx_copy', 'normal')
+                self.root.set_menu_item_state('ctx_select_all', 'normal')
+    
+                textboxes_context_menu.tk_popup(event.x_root + 1, event.y_root + 1)
             
-            elif isinstance(widget,ttk.Treeview):
-                row_id = widget.identify_row(self.root.current_event.y)
-                col_id = int(widget.identify_column(self.root.current_event.x).replace('#', '')) - 1
-                treeview_context_menu.entryconfig("Copy", state="normal" if len(row_id) > 0 else "disabled")
-                treeview_context_menu.entryconfig("Send", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
-                treeview_context_menu.entryconfig("Address Info", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
-                treeview_context_menu.entryconfig("View on Explorer", state="normal" if len(row_id) > 0 and col_id == 0 else "disabled")
-                self.root.account_page.accounts_tree.selection_set(row_id)
-                self.root.current_event = event
-                treeview_context_menu.tk_popup(event.x_root+1, event.y_root+1)
-                #row_id = widget.identify_row(current_event.y)
-                ##col_id = int(widget.identify_column(current_event.x).replace('#', '')) - 1
-                #if len(row_id) > 0:
-                    
+            elif isinstance(widget, ttk.Treeview):
+                row_id = widget.identify_row(event.y)
+                # Make sure we clicked on an actual item
+                has_selection = len(row_id) > 0
+                
+                # Check if we clicked on the 'Address' column (column 0)
+                col_id_str = widget.identify_column(event.x)
+                col_id = int(col_id_str.replace('#', '')) - 1
+                is_address_column = (col_id == 0)
+    
+                # Use the stable keys and the helper method on the root window
+                self.root.set_menu_item_state('tree_copy', 'normal' if has_selection else 'disabled')
+                self.root.set_menu_item_state('tree_send', 'normal' if has_selection and is_address_column else 'disabled')
+                self.root.set_menu_item_state('tree_addr_info', 'normal' if has_selection and is_address_column else 'disabled')
+                self.root.set_menu_item_state('tree_explorer', 'normal' if has_selection and is_address_column else 'disabled')
+                
+                # This logic remains the same
+                if has_selection:
+                    widget.selection_set(row_id)
+                
+                treeview_context_menu.tk_popup(event.x_root + 1, event.y_root + 1)
+    
             else:
-                # Hide the menu if the widget is neither Treeview nor Entry
+                # Hide the menus if the widget is not recognized
                 textboxes_context_menu.unpost()
                 treeview_context_menu.unpost()
+                
+        except Exception as e:
+            # It's good practice to catch potential errors and log them
+            print(f"Error in show_context_menu: {e}")
         finally:
-            self.root.grab_release()
+            # This is generally not needed and can sometimes cause issues.
+            # self.root.grab_release()
+            pass
     
 
     def cut_text(self, event=None, delete=False):
@@ -1515,8 +1675,8 @@ class GUIUtils:
         # Add a separator for better visual distinction
         self.root.wallet_menu.add_separator()
         # Populate the wallet menu with files and folders
-        self.populate_wallet_menu('./wallets', self.root.wallet_menu)
-
+        with self.root.translation_engine.no_translate():
+            self.populate_wallet_menu('./wallets', self.root.wallet_menu)
 
     def populate_wallet_menu(self, path, menu):
         # List all files and directories at the given path
@@ -1728,9 +1888,13 @@ class GUIUtils:
     
 
     def activate_button(self, new_active_button):
+        # ADD THIS GUARD CLAUSE at the top.
+        if not new_active_button:
+            return
+    
         if self.root.active_button is not None:
-            self.root.active_button.config(style="menuButtonInactive.TButton")  # Reset the old active button to default color
-        new_active_button.config(style='TButton')  # Set new active button color
+            self.root.active_button.config(style="menuButtonInactive.TButton")
+        new_active_button.config(style='TButton')
         self.root.active_button = new_active_button
     
 
@@ -2061,8 +2225,14 @@ class WalletOperations:
             receiver = self.root.send_page.recipient_entry.get()
             amount = self.root.send_page.amount_entry.get()
             message = self.root.send_page.message_entry.get()
+            user_confirmation = False
 
-            if self.root.stored_data.disable_tx_confirmation_dialog or self.callbacks.post_tx_confirmation(sender=sender, receiver=receiver, amount=amount):
+            if not self.root.stored_data.disable_tx_confirmation_dialog:
+                user_confirmation, disable_tx_confirmation_dialog = self.callbacks.post_tx_confirmation(sender=sender, receiver=receiver, amount=amount)
+                if disable_tx_confirmation_dialog:
+                    self.root.stored_data.disable_tx_confirmation_dialog = True
+
+            if self.root.stored_data.disable_tx_confirmation_dialog or user_confirmation:
                 for entry in self.root.stored_data.wallet_data["entry_data"]:
                     if entry != "master_mnemonic":
                         for entry_data in self.root.stored_data.wallet_data["entry_data"][entry]:
@@ -2085,7 +2255,9 @@ class WalletOperations:
                     print(tx_str)
                     msg_str += f'[{datetime.now()}]{tx_str}'
                 msg_str += "\n----------------------------------------------------------------"
-                self.root.send_page.tx_log.insert(tk.END, f'\n{msg_str}\n')
+
+                with self.root.translation_engine.no_translate():
+                    self.root.send_page.tx_log.insert(tk.END, f'\n{msg_str}\n')
         
                 if transaction:
                     hyperlink_tag = f"hyperlink-{transaction_hash}"

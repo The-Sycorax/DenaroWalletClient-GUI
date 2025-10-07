@@ -252,7 +252,7 @@ class Verification:
     
     @staticmethod
     def try_request(address, chosen_protocol, node_validation, from_gui=False):
-        main_node_url = "denaro-node.gaetano.eu.org"
+        main_node_url = "localhost:3006"
         protocols = ["https://", "http://"]
 
         # Configure logging for detailed error information

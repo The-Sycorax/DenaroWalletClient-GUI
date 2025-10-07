@@ -10,3 +10,4 @@ update_config.json
 experimental_ui.py
 old
 *.cfg
+language_cache

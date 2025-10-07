@@ -62,6 +62,8 @@ root_logger.addHandler(handler)
 wallet_client_version = "Denaro Wallet Client v0.0.7-beta"
 transaction_message_extension = f"Sent From {wallet_client_version}"
 
+ADDRESS_PATTERN = r'^[DE][1-9A-HJ-NP-Za-km-z]{44}$'
+
 
 # Filesystem Functions
 def is_wallet_encrypted(data_segment):
@@ -1495,7 +1497,7 @@ def read_config(config_path='settings.cfg', disable_err_msg = False):
     - dict: The configuration as a dictionary, or None if the file is not found or contains invalid JSON.
     """
     if not os.path.exists(config_path):
-        config = {"default_node": "https://denaro-node.gaetano.eu.org", "node_validation": "True", "default_currency": "USD", "disable_exchange_rate_features": "True"}
+        config = {"default_node": "http://localhost:3006", "node_validation": "False", "default_currency": "USD", "disable_exchange_rate_features": "True", "language": "en"}
         write_config(config=config)
 
     try:
@@ -1505,6 +1507,11 @@ def read_config(config_path='settings.cfg', disable_err_msg = False):
             if not 'disable_exchange_rate_features' in config_values:
                 config_values['disable_exchange_rate_features'] = "True"
                 write_config(config=config_values)
+            
+            if not 'language' in config_values:
+                config_values['language'] = "en"
+                write_config(config=config_values)
+           
         
             return config_values  # Loads and returns the configuration as a dictionary
         
@@ -1555,9 +1562,9 @@ def validate_and_select_node(node):
     if node:
         is_node_valid, node, _, _ = Verification.validate_node_address(node, referer="validate_and_select_node")
         if not is_node_valid:
-            node = 'https://denaro-node.gaetano.eu.org'
+            node = 'http://localhost:3006'
     else:
-        node = 'https://denaro-node.gaetano.eu.org'
+        node = 'http://localhost:3006'
     DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not node])
     return node
 
@@ -1578,11 +1585,10 @@ def initialize_wallet(filename):
 
 def get_address_and_private_key(filename, password, totp_code, address, private_key):
     encrypted = False
-    address_pattern = r'^[DE][1-9A-HJ-NP-Za-km-z]{44}$'
     
     if filename and address and not private_key:
         #Validate wallet address using regex pattern        
-        if not re.match(address_pattern, address):
+        if not re.match(ADDRESS_PATTERN, address):
              logging.error("The wallet address provided is not valid.")
              DataManipulation.secure_delete([var for var in locals().values() if var is not None])
              return None, None
@@ -1892,9 +1898,8 @@ def prepareTransaction(filename, password, totp_code, amount, sender, private_ke
     except ValueError:
         message = message.encode('utf-8')
     
-    address_pattern = r'^[DE][1-9A-HJ-NP-Za-km-z]{44}$'
     #Validate receiving address using regex pattern        
-    if not re.match(address_pattern, receiver):
+    if not re.match(ADDRESS_PATTERN, receiver):
         logging.error("The recieving address is not valid.")
         DataManipulation.secure_delete([var for var in locals().values() if var is not None])
         return None, "Error: The recieving address is not valid."
@@ -2494,8 +2499,7 @@ def process_decryptwallet_filter(args):
     addresses = remove_duplicates_from_address_filter(addresses)
     
     # Validate addresses using regex pattern
-    address_pattern = r'^-?[DE][1-9A-HJ-NP-Za-km-z]{44}$'
-    valid_addresses = [addr for addr in addresses if re.match(address_pattern, addr)]
+    valid_addresses = [addr for addr in addresses if re.match(ADDRESS_PATTERN, addr)]
     invalid_addresses = [addr for addr in addresses if addr not in valid_addresses]
 
     if len(invalid_addresses) >= 1:

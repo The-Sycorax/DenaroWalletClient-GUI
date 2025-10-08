@@ -520,27 +520,10 @@ class SettingsPage(BasePage):
         # --- Language widget creation ---
         self.language_frame = tb.Frame(self)
         self.language_label = tb.Label(self.language_frame, text="Language:")
-    
-        # Map of stable internal keys (English) to user-facing display names (Native)
-        self.language_map = {
-            'ar': "العربية",
-            'zh': "中文",
-            'en': "English",
-            'fr': "Français",
-            'de': "Deutsch",
-            'hi': "हिन्दी",
-            'it': "Italiano",
-            'ja': "日本語",
-            'pl': "Polski",
-            'pt': "Português",
-            'ru': "Русский",
-            'es': "Español",
-            'tr': "Türkçe"
-        }        
         
         # The combobox uses the display names (the dictionary values)
         #with translation_engine.no_translate():
-        self.language_display_names = list(self.language_map.values())
+        self.language_display_names = list(self.root.translation_engine.language_map.values())
         self.language_combobox = AutocompleteCombobox(self.language_frame, width=20, completevalues=self.language_display_names, state='normal')
     
         # Validate language on init
@@ -599,11 +582,11 @@ class SettingsPage(BasePage):
         # Use the display name for the change-check to prevent re-validation loops
         if current_display_name != self.prev_language:
             # Validate that the display name is one of the valid options
-            if current_display_name in self.language_map.values():
+            if current_display_name in self.root.translation_engine.language_map.values():
                 self.language_valid = True
                 self.valid_language_label.config(text="Valid Language ✓", foreground='green')                
                 # Find the corresponding language code (e.g., "de") to store internally
-                for code, name in self.language_map.items():
+                for code, name in self.root.translation_engine.language_map.items():
                     if name == current_display_name:
                         # self.language now holds the language code
                         self.language = code
@@ -694,7 +677,7 @@ class SettingsPage(BasePage):
         
         # Find the corresponding ISO code (e.g., "es") for the selected display name
         selected_language_code = None
-        for code, name in self.language_map.items():
+        for code, name in self.root.translation_engine.language_map.items():
             if name == language_selection:
                 selected_language_code = code
                 break
@@ -1084,7 +1067,7 @@ class ConfigHandler:
                     
                 # Look up the display name (e.g., "Deutsch") from the map
                 # Provide the English display name as a fallback if the code is invalid
-                display_name = self.root.settings_page.language_map.get(language_code, "English")
+                display_name = self.root.translation_engine.language_map.get(language_code, "English")
                     
                 # Set the combobox to the display name
                 self.root.settings_page.language_combobox.set(display_name)

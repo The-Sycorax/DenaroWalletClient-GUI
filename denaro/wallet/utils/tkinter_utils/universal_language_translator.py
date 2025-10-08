@@ -106,6 +106,7 @@ import weakref
 import argostranslate.package
 import argostranslate.translate
 from deep_translator import GoogleTranslator
+from .argos_language_map import language_map
 
 # Configure module logger
 log = logging.getLogger("TkinterTranslator")
@@ -160,6 +161,8 @@ class TkinterUniversalLanguageTranslator:
         self.target_lang_code = target_language
         self.translation_enabled = (source_language != target_language)
         self.in_no_translate_block = False
+        
+        self.language_map = language_map
         
         log.info(
             f"Initializing translator: {source_language} → {target_language}. "
@@ -233,7 +236,13 @@ class TkinterUniversalLanguageTranslator:
                 target=self.target_lang_code
             )
         except Exception as e:
-            log.error(f"Failed to initialize Google Translator: {e}")
+            if "No support for the provided language" in str(e):
+                log.error(
+                    f"No support for the provided language: Google Translator does not support "
+                    f"{self.source_lang_code} → {self.target_lang_code}"
+                )
+            else:
+                log.error(f"Failed to initialize Google Translator: {e}")
             
         # Initialize Argos Translate (offline model)
         self._initialize_argos()
@@ -338,7 +347,7 @@ class TkinterUniversalLanguageTranslator:
                 if not hasattr(widget, '_original_options'):
                     continue
 
-                log.debug(f"Refreshing widget: {type(widget).__name__} with options: {self._redact_sensitive(widget._original_options)}")
+                log.debug(f"Refreshing widget: {type(widget).__name__}")# with options: {self._redact_sensitive(widget._original_options)}")
                 opts = widget._original_options
                 
                 # Special handling for Combobox to preserve selection
@@ -727,11 +736,14 @@ class TkinterUniversalLanguageTranslator:
         # Check non-translatable patterns
         for pattern in self.non_translatable_patterns:
             if pattern.fullmatch(stripped_text):
-                log.debug(
-                    f"Skipped: Matched non-translatable pattern "
-                    f"'{pattern.pattern}'"
-                )
+                if not stripped_text in self.language_map.values():
+                    log.debug(
+                        f"Skipped: Matched non-translatable pattern "
+                        f"'{pattern.pattern}'"
+                    )
                 return text
+                
+ 
         
         log.debug(f"--- TRANSLATE REQUEST: '{self._redact_sensitive(text)}' ---")
 
@@ -796,6 +808,7 @@ class TkinterUniversalLanguageTranslator:
         log.info(f"Offline model hits:         {self.offline_hits}")
         log.info(f"Online API calls:           {self.api_calls}")
         log.info("─" * 60)
+        print()
 
     def _on_exit_cleanup(self):
         """
@@ -1286,6 +1299,9 @@ def activate_tkinter_translation(source_language='en', target_language='en', log
     engine.sensitive_patterns = kwargs.get('sensitive_patterns', [])
     engine.non_translatable_patterns = kwargs.get('non_translatable_patterns', [])
 
+    engine.non_translatable_patterns.append(re.compile(r'|'.join(re.escape(name) for name in engine.language_map.values())) # Ensures language names are not translated
+)
+
     engine.activate()
     engine.register_report_on_exit()
     
@@ -1305,7 +1321,7 @@ if __name__ == '__main__':
             self.engine = engine
             self.language_map = language_map
 
-            self.root.geometry("925x800")
+            self.root.geometry("950x925")
             self.root.title("Tkinter Universal Language Translator Demo")
             
             self._configure_styles()
@@ -1322,19 +1338,9 @@ if __name__ == '__main__':
             style.configure("Sensitive.TLabel", foreground="red")
 
         def create_menu(self):
-            """Creates the main menu bar for language switching and actions."""
+            """Creates the main menu bar for actions."""
             menu_bar = tk.Menu(self.root)
             self.root.config(menu=menu_bar)
-
-            lang_menu = tk.Menu(menu_bar, tearoff=0)
-            menu_bar.add_cascade(label="Select Language", menu=lang_menu)
-            lang_menu.add_command(label="English (Original)", command=lambda: self.engine.set_language('en'))
-            lang_menu.add_separator()
-            
-            sorted_languages = sorted(self.language_map.items(), key=lambda item: item[1])
-            for lang_code, lang_name in sorted_languages:
-                if lang_code != 'en':
-                    lang_menu.add_command(label=lang_name, command=lambda c=lang_code: self.engine.set_language(c))
 
             action_menu = tk.Menu(menu_bar, tearoff=0)
             menu_bar.add_cascade(label="Actions", menu=action_menu)
@@ -1346,9 +1352,31 @@ if __name__ == '__main__':
             """Creates the main content of the demo window."""
             main_frame = ttk.Frame(self.root, padding=15)
             main_frame.pack(fill="both", expand=True)
-            
-            ttk.Label(main_frame, text="Please Note: Not everything will be translated correctly or accurately.", style="Help.TLabel").pack(fill="x", pady=(0, 10))
 
+            # --- Language Selection ---
+            lang_frame = ttk.LabelFrame(main_frame, text="Language Selection", padding=10)
+            lang_frame.pack(fill="x", pady=(0, 10))
+
+            ttk.Label(lang_frame, text="Select Language:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
+
+            # Create and populate the combobox
+            self.language_combo = ttk.Combobox(lang_frame, state="readonly")
+            self.language_combo.grid(row=0, column=1, sticky='ew', padx=5, pady=5)
+            lang_frame.columnconfigure(1, weight=1)
+            
+            
+            self.lang_name_to_code = {name: code for code, name in self.language_map.items()}
+
+            # Populate the combobox with language names in their original order
+            language_names = list(self.language_map.values())
+            self.language_combo['values'] = language_names
+            self.language_combo.set("English")  # Set the default value
+
+            # Create the button to set the language
+            set_lang_button = ttk.Button(lang_frame, text="Set Language", command= lambda: self.engine.set_language(self.lang_name_to_code.get(self.language_combo.get(), 'en')))
+            set_lang_button.grid(row=1, column=1, sticky='e', padx=5, pady=5)
+
+            ttk.Label(main_frame, text="Please Note: Not everything will be translated correctly or accurately.", style="Help.TLabel").pack(fill="x", pady=(0, 10))
 
             lf1 = ttk.LabelFrame(main_frame, text="Display Widgets", padding=10)
             lf1.pack(fill="x", pady=(0, 10))
@@ -1429,35 +1457,16 @@ if __name__ == '__main__':
         def show_message(self):
             tkinter.messagebox.showinfo(title="Information", message="This message box and its title are translated.")
 
-    # --- Application Entry Point ---
-    LANGUAGE_MAP = {
-            'ar': "العربية",
-            'zh': "中文",
-            'en': "English",
-            'fr': "Français",
-            'de': "Deutsch",
-            'hi': "हिन्दी",
-            'it': "Italiano",
-            'ja': "日本語",
-            'pl': "Polski",
-            'pt': "Português",
-            'ru': "Русский",
-            'es': "Español",
-            'tr': "Türkçe"
-        }       
-
-    
     SENSITIVE_PATTERNS = [re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}')]
 
     # We include non-translatable patterns because Argos or Google Translate may inadvertantly translate certain strings.
     NON_TRANSLATABLE_PATTERNS = [
         re.compile(r'\d{1,2}\/\d{1,2}\/\d{2,4}'), # Date pattern
-        re.compile(r'|'.join(re.escape(name) for name in LANGUAGE_MAP.values())) # Ensures language names are not translated
     ]
 
     
     translation_engine = activate_tkinter_translation(
-        source_language='en', 
+        source_language='en',
         target_language='en',
         log_level=logging.DEBUG,
         sensitive_patterns=SENSITIVE_PATTERNS,
@@ -1465,6 +1474,6 @@ if __name__ == '__main__':
     )
 
     root = tk.Tk()
-    app = DemoApp(root, translation_engine, LANGUAGE_MAP)
+    app = DemoApp(root, translation_engine, translation_engine.language_map)
     root.mainloop()
 '''

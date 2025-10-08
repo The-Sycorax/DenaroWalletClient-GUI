@@ -690,10 +690,17 @@ class SettingsPage(BasePage):
         # Checks for changes in settings compared to the current configuration
         current_config = self.root.config_handler.config_values
         
-        # --- UPDATED: Get language and check for changes ---
         language_selection = self.language_combobox.get().strip()
-        language_changed = (language_selection != current_config.get('language'))
-        # ----------------------------------------------------
+        
+        # Find the corresponding ISO code (e.g., "es") for the selected display name
+        selected_language_code = None
+        for code, name in self.language_map.items():
+            if name == language_selection:
+                selected_language_code = code
+                break
+        
+        # Compare the selected ISO code with the one stored in the config
+        language_changed = (selected_language_code != current_config.get('language'))
         
         if not self.root.disable_exchange_rate_features:
             currency_code = self.currency_code_combobox.get().strip()

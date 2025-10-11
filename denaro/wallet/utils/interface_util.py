@@ -186,7 +186,7 @@ class UserPrompts:
             # 1. Ask the DialogFunctions bridge to start the secondary listener thread (Thread B).
             #    This call is NON-BLOCKING and returns immediately. The thread manager
             #    will create and start the new thread.
-            callback_object.root.dialogs.dialog_functions.setup_ui_listener_thread(
+            callback_object.root.dialogs.dialog_functions.setup_input_listener_thread(
                 close_event=close_dialog_event,
                 interrupt_queue=interrupt_queue
             )

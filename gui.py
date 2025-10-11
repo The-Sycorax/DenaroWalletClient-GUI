@@ -20,7 +20,7 @@ from typing import Optional
 import webbrowser
 from datetime import datetime
 import logging
-
+import threading
 
 # Get the absolute path of the directory containing the current script.
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -761,10 +761,12 @@ class DenaroWalletGUI(tk.Tk):
         self.send_page = self.pages.get("Send")
         self.settings_page = self.pages.get("Settings")
         self.event_handler = EventHandler(self)
-        
+
+        self.translation_engine.event_handler = self.event_handler
+        self.translation_engine.log.info("Event handler registered with translation engine.")
+
         self.config_handler.update_config_values()
         
-    
     def _add_menu_item(self, parent_menu, item_type, key, **kwargs):
         # ... implementation from previous step ...
         add_method = getattr(parent_menu, f"add_{item_type}")
@@ -1080,9 +1082,53 @@ class ConfigHandler:
                 self.root.settings_page.validate_language()
             # --------------------------------------------
 
+
+    def language_update_worker(self, stop_signal):
+        """
+        This worker runs on a background thread so that the main GUI thread dose not
+        get blocked. It shows the language update in realtime.
+        """
+        self.root.translation_engine.set_language(self.config_values['language'])
+    
+    
+    def save_node_config(self, node, node_validation_enabled):
+        """
+        Updates the self.config_values dictionary with all node settings.
+        """
+        if self.config_values.get('default_node') != node:
+            self.config_values['default_node'] = node
+            self.root.stored_data.node_valid = False
+            self.root.stored_data.node_validation_performed = False
+    
+        if self.config_values.get('node_validation') != str(not node_validation_enabled):
+            self.config_values['node_validation'] = str(not node_validation_enabled)
+            self.root.stored_data.node_valid = False
+            self.root.stored_data.node_validation_performed = False
+    
+        if not self.root.disable_exchange_rate_features:
+            if self.config_values.get('default_currency') != self.root.stored_data.currency_code:
+                self.config_values['default_currency'] = self.root.stored_data.currency_code
+    
+
+    def show_save_confirmation_popup(self, new_config):
+        """
+        Displays the final confirmation popup after saving settings.
+        """
+        if new_config:
+            if new_config == self.config_values:
+                message = "Settings saved to config file."
+            else:
+                message = "Settings not saved to config file."
+    
+            self.root.custom_popup.add_popup(
+                timeout=5000,
+                prompt=[{"label_config":"text='{}', background='#2780e3', anchor='center', font='Calibri 10 bold'".format(message), "grid_config":"sticky='nsew'"}], 
+                grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}]
+            )
+
+
     def save_config(self):
-        #self.root.settings_page.node_validation_msg_label.config(text="")
-        
+        # --- Step 1: Perform initial validation ---
         if not self.root.settings_page.denaro_node_address_entry.get().strip():
             self.root.settings_page.denaro_node_address_entry.delete(0, 'end')
             self.root.settings_page.denaro_node_address_entry.insert(0, "http://localhost:3006")
@@ -1090,49 +1136,33 @@ class ConfigHandler:
         
         node, string_valid, node_validation_enabled = self.root.settings_page.validate_node_fields()
         
-        if string_valid:
-            # Configuration saving logic needs to consider the optional port in validation
-            if self.root.settings_page.check_setting_changes():
-                if not self.root.disable_exchange_rate_features:
-                    if self.config_values.get('default_currency') != self.root.stored_data.currency_code:
-                        self.config_values['default_currency'] = self.root.stored_data.currency_code
-                
-                # --- Handle Language Setting on Save ---
-                # Use the validated language from the settings page
-                if self.config_values.get('language') != self.root.settings_page.language:
-                    self.config_values['language'] = self.root.settings_page.language
-                    self.root.translation_engine.set_language(self.config_values['language'])
-                # ------------------------------------------
-
-                if self.config_values.get('default_node') != node:
-                    self.config_values['default_node'] = node
-                    self.root.stored_data.node_valid = False
-                    self.root.stored_data.node_validation_performed = False
-
-                if self.config_values.get('node_validation') != str(not node_validation_enabled):
-                    self.config_values['node_validation'] = str(not node_validation_enabled)
-                    self.root.stored_data.node_valid = False
-                    self.root.stored_data.node_validation_performed = False
-                
-                temp_config = wallet_client.read_config(disable_err_msg = True)
-                
-                if temp_config != self.config_values:                    
-                    wallet_client.write_config(config=self.config_values)
-
-                new_config = wallet_client.read_config(disable_err_msg = True)
-
-                if new_config == self.config_values: 
-                    self.root.custom_popup.add_popup(timeout=5000, prompt=[{"label_config":"text='Settings saved to config file.', background='#2780e3', anchor='center', font='Calibri 10 bold'", "grid_config":"sticky='nsew'"}], 
-                                                                   grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}])
-                else:
-                    self.root.custom_popup.add_popup(timeout=5000, prompt=[{"label_config":"text='Settings not saved to config file.', background='#2780e3', anchor='center', font='Calibri 10 bold'", "grid_config":"sticky='nsew'"}], 
-                                                                   grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}])
-
-                self.update_config_values()
-
-        else:
+        # node fields not valid, so exit early.
+        if not string_valid:
             self.root.settings_page.keep_save_button_disabled = True
             self.root.settings_page.update_save_button_state()
+            return
+        
+        # Nothing to save, so exit early.
+        if not self.root.settings_page.check_setting_changes():
+            return
+        
+        # Language HAS changed. Dispatch to the background worker thread.
+        if self.config_values.get('language') != self.root.settings_page.language:
+            self.config_values['language'] = self.root.settings_page.language
+            self.root.wallet_thread_manager.start_thread(name="language_update_orchestrator", target=self.language_update_worker)
+
+        # Update the rest of the config dictionary and write to disk
+        self.save_node_config(node, node_validation_enabled)
+        wallet_client.write_config(config=self.config_values)
+        new_config = wallet_client.read_config(disable_err_msg=True)
+    
+        #  Safely queue the final UI feedback on the main GUI thread
+        self.show_save_confirmation_popup(new_config)
+
+        # Finally, for good measure update all config values 
+        self.update_config_values()
+
+
 
 class EventHandler:
     def __init__(self, root):
@@ -1142,6 +1172,7 @@ class EventHandler:
         self.price_timer = 31
         self.stop_loading_wallet = False
         self.stop_getting_balance = False
+        self.translation_wait_dialog_event = None
 
         # This previous_states dictionary is perfectly fine as it uses stable keys.
         self.previous_states = {
@@ -1332,6 +1363,44 @@ class EventHandler:
         """Sets all tracked file menu items to a given state using their keys."""
         for key in self.file_menu_keys:
             self.root.set_menu_item_state(key, state)
+
+    def show_translation_wait_dialog(self, use_queue=False):
+        """
+        Displays a non-blocking translation wait dialog. This is meant  to indicate
+        that the interface is in the process of language translation. State is
+        managed by the translation engine.
+        """
+        self.root.translation_engine.log.debug("Showing translation wait dialog.")
+        self.translation_wait_dialog_event = threading.Event()
+        title = "Processing"
+        message = "Translating user interface, please wait..."
+        
+        if use_queue:
+            # Create the dialog by posting to to queue
+            self.root.wallet_operations.callbacks.post_messagebox_wait(
+                title, 
+                message, 
+                self.translation_wait_dialog_event
+            )
+        else:
+            # Create the dialog directly instead of posting to queue
+            self.root.dialogs.messagebox_wait(
+                title, 
+                message, 
+                modal=False,  # Important: non-modal so it doesn't block
+                close_event=self.translation_wait_dialog_event
+            )
+
+        # Force the dialog to render immediately
+        self.root.update_idletasks()
+
+        
+    def close_translation_wait_dialog(self):
+        """Closes the translation wait dialog dialog if open."""
+        if self.translation_wait_dialog_event:
+            self.root.translation_engine.log.debug("Closing translation wait dialog.")
+            self.root.after(100, self.translation_wait_dialog_event.set)
+            self.translation_wait_dialog_event = None
 
 
 class GUIUtils:
@@ -2218,7 +2287,14 @@ class WalletOperations:
             user_confirmation = False
 
             if not self.root.stored_data.disable_tx_confirmation_dialog:
-                user_confirmation, disable_tx_confirmation_dialog = self.callbacks.post_tx_confirmation(sender=sender, receiver=receiver, amount=amount)
+                result = self.callbacks.post_tx_confirmation(sender=sender, receiver=receiver, amount=amount)
+                
+                if result is not None:
+                    user_confirmation, disable_tx_confirmation_dialog = result
+                else:
+                    self.root.stored_data.operation_mode = None
+                    return
+
                 if disable_tx_confirmation_dialog:
                     self.root.stored_data.disable_tx_confirmation_dialog = True
 
@@ -2447,6 +2523,11 @@ class Callbacks:
             title, msg, modal=modal, result_queue=result_queue
         )
         return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+
+
+    def post_messagebox_wait(self, title, message, close_event, modal=True):
+        self.root.wallet_thread_manager.request_queue.put(lambda: self.root.dialogs.messagebox_wait(title, message,
+             modal=modal, close_event=close_event))
 
 
     # =========================================================================

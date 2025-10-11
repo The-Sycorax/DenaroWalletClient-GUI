@@ -162,6 +162,15 @@ class TkinterUniversalLanguageTranslator:
         self.translation_enabled = (source_language != target_language)
         self.in_no_translate_block = False
         
+        self._is_in_translation_batch = False
+        # Only show wait dialog if 3 or more new strings need translation.
+        self.wait_dialog_threshold = 3
+        self.wait_dialog_use_queue = False
+
+        self.log = log
+
+        self.event_handler = None
+        
         self.language_map = language_map
         
         log.info(
@@ -250,6 +259,84 @@ class TkinterUniversalLanguageTranslator:
         # Reset statistics for new session
         self.api_calls, self.offline_hits, self.cache_hits = 0, 0, 0
 
+    
+    def is_string_translatable(self, text):
+        """
+        A centralized checker with all filtering rules to determine if a string
+        is a valid candidate for translation.
+        """
+        # Rule 1: Must be a non-empty string
+        if not text or not isinstance(text, str) or not text.strip():
+            #log.debug("Skipped: Input is empty, None, or not a string")
+            return False
+        
+        # Rule 2: Heuristic filter for strings without letters (e.g., '1:', '---')
+        if not re.search(r'[a-zA-Z]', text):
+            #log.debug("Skipped: No letters detected (heuristic filter)")
+            return False
+            
+        stripped_text = text.strip()
+        
+        # Rule 3: Check sensitive patterns (optional, but good practice)
+        for pattern in self.sensitive_patterns:
+            if pattern.fullmatch(stripped_text):
+                #log.debug("Skipped: Matched sensitive data pattern (redacted)")
+                self.secure_delete([stripped_text])
+                return False
+                
+        # Rule 4: Check non-translatable patterns
+        for pattern in self.non_translatable_patterns:
+            if pattern.fullmatch(stripped_text):
+                if not stripped_text in self.language_map.values():
+                    #log.debug(f"Skipped: Matched non-translatable pattern: '{pattern.pattern}'")
+                    return False
+
+        # If all checks pass, it's a valid candidate
+        return True
+    
+    def count_new_translations(self, strings_to_check):
+        """
+        Counts new strings using the new, centralized filtering logic.
+        """
+        if not self.translation_enabled or not self.event_handler:
+            return 0
+        
+        count = 0
+
+        for text in strings_to_check:
+            # Use the unified checker first, then check the cache.
+            if self.is_string_translatable(text) and text not in self.cache:
+                count += 1
+                if count >= self.wait_dialog_threshold:
+                    break        
+        return count
+        
+    def begin_translation_batch(self):
+        """
+        Signals the start of a batch and shows the dialog.
+        """
+        if not self.translation_enabled or not self.event_handler:
+            return
+        
+        if self._is_in_translation_batch:
+            return
+            
+        self._is_in_translation_batch = True
+        self.event_handler.show_translation_wait_dialog(use_queue=self.wait_dialog_use_queue)
+
+    def end_translation_batch(self):
+        """
+        Signals the end of a batch and closes the wait dialog.
+        """
+        if not self._is_in_translation_batch:
+            return
+
+        self.event_handler.close_translation_wait_dialog()
+        self._is_in_translation_batch = False
+        self.wait_dialog_use_queue = False
+
+
+
     def set_language(self, new_target_language):
         """
         Change the target language or disable translation.
@@ -302,6 +389,7 @@ class TkinterUniversalLanguageTranslator:
             self.reverse_cache = {}
             log.info("Translation disabled. Reverting UI to original language.")
         else:
+            self.wait_dialog_use_queue = True
             # ENABLING or CHANGING: Initialize backends for new language
             self.translation_enabled = True
             log.info(f"Enabling/changing translation from '{previous_target_lang}'.")
@@ -338,51 +426,88 @@ class TkinterUniversalLanguageTranslator:
         state = 'ON' if self.translation_enabled else 'OFF'
         log.info(f"--- Refreshing UI for {len(self.tracked_widgets)} tracked widgets. New state: {state} ---")
         
-        for widget in list(self.tracked_widgets):
-            try:
-                if hasattr(widget, '_explicitly_untranslatable'):
-                    log.debug(f"Skipping refresh for explicitly untranslatable widget: {type(widget).__name__}")
-                    continue
-                
-                if not hasattr(widget, '_original_options'):
-                    continue
+        widgets_to_refresh = list(self.tracked_widgets)
+        texts_to_check = []
 
-                log.debug(f"Refreshing widget: {type(widget).__name__}")# with options: {self._redact_sensitive(widget._original_options)}")
+        # 1. Gather all original text from all widgets for the pre-flight check
+        for widget in widgets_to_refresh:
+            if hasattr(widget, '_original_options'):
                 opts = widget._original_options
                 
-                # Special handling for Combobox to preserve selection
-                current_combo_index = -1
-                if isinstance(widget, ttk.Combobox):
-                    try:
-                        current_combo_index = widget.current()
-                    except tk.TclError:
-                        pass # Ignore if widget is in a bad state
-
-                config_opts = {k: v for k, v in opts.items() if k not in ['title', 'headings', 'tabs', 'entries']}
-                if config_opts:
-                    widget.configure(**config_opts)
-
-                if 'title' in opts:
-                    widget.title(opts['title'])
-                if 'headings' in opts and isinstance(widget, ttk.Treeview):
-                    for col, text in opts['headings'].items():
-                        widget.heading(col, text=text)
-                if 'tabs' in opts and isinstance(widget, ttk.Notebook):
-                    for cid, t_opts in opts['tabs'].items():
-                        widget.tab(cid, **t_opts)
-                if 'entries' in opts and isinstance(widget, tk.Menu):
-                    for index, entry_opts in opts['entries'].items():
-                        widget.entryconfigure(index, **entry_opts)
+                for key in self.translatable_keywords:
+                    if key in opts:
+                        texts_to_check.append(opts[key])
                 
-                # After configuring, restore Combobox selection
-                if isinstance(widget, ttk.Combobox) and current_combo_index != -1:
-                    widget.current(current_combo_index)
-
-            except tk.TclError as e:
-                log.debug(f"Could not refresh widget (it may have been destroyed): {e}")
-            except Exception as e:
-                log.error(f"Unexpected error refreshing widget of type '{type(widget).__name__}': {e}", exc_info=True)
+                for key in self.translatable_list_keywords:
+                    if key in opts and isinstance(opts[key], (list, tuple)):
+                        texts_to_check.extend(opts[key])
                 
+                if 'headings' in opts:
+                    texts_to_check.extend(opts['headings'].values())
+                
+                if 'tabs' in opts:
+                    for tab_opts in opts['tabs'].values():
+                        if 'text' in tab_opts:
+                            texts_to_check.append(tab_opts['text'])
+                
+                if 'entries' in opts:
+                    for entry_opts in opts['entries'].values():
+                        if 'label' in entry_opts:
+                            texts_to_check.append(entry_opts['label'])
+        
+        new_translations_count = self.count_new_translations(texts_to_check)
+        show_wait_dialog = new_translations_count >= self.wait_dialog_threshold
+
+        if show_wait_dialog:
+            self.begin_translation_batch()
+
+        try:
+            # The original refresh loop remains unchanged
+            for widget in widgets_to_refresh:
+                try:
+                    if hasattr(widget, '_explicitly_untranslatable'):
+                        log.debug(f"Skipping refresh for explicitly untranslatable widget: {type(widget).__name__}")
+                        continue
+                    
+                    if not hasattr(widget, '_original_options'):
+                        continue
+                    
+                    log.debug(f"Refreshing widget: {type(widget).__name__}")# with options: {self._redact_sensitive(widget._original_options)}")
+                    opts = widget._original_options
+                    
+                    current_combo_index = -1
+                    if isinstance(widget, ttk.Combobox):
+                        try:
+                            current_combo_index = widget.current()
+                        except tk.TclError:
+                            pass 
+                    config_opts = {k: v for k, v in opts.items() if k not in ['title', 'headings', 'tabs', 'entries']}
+                    if config_opts:
+                        widget.configure(**config_opts)
+
+                    if 'title' in opts:
+                        widget.title(opts['title'])
+                    if 'headings' in opts and isinstance(widget, ttk.Treeview):
+                        for col, text in opts['headings'].items():
+                            widget.heading(col, text=text)
+                    if 'tabs' in opts and isinstance(widget, ttk.Notebook):
+                        for cid, t_opts in opts['tabs'].items():
+                            widget.tab(cid, **t_opts)
+                    if 'entries' in opts and isinstance(widget, tk.Menu):
+                        for index, entry_opts in opts['entries'].items():
+                            widget.entryconfigure(index, **entry_opts)
+                    
+                    if isinstance(widget, ttk.Combobox) and current_combo_index != -1:
+                        widget.current(current_combo_index)
+                except tk.TclError as e:
+                    log.debug(f"Could not refresh widget (it may have been destroyed): {e}")
+                except Exception as e:
+                    log.error(f"Unexpected error refreshing widget: {e}", exc_info=True)
+        finally:
+            # Only end the batch if we started it
+            if show_wait_dialog:
+                self.end_translation_batch()
+            
         log.info("--- UI Refresh Complete. ---")
 
     def _redact_sensitive(self, data):
@@ -720,7 +845,7 @@ class TkinterUniversalLanguageTranslator:
             return text
             
         if not re.search(r'[a-zA-Z]', text):
-            log.debug("kipped: No letters detected (heuristic filter)")
+            log.debug("Skipped: No letters detected (heuristic filter)")
             return text
         
         # Security and pattern-based filters
@@ -737,14 +862,9 @@ class TkinterUniversalLanguageTranslator:
         for pattern in self.non_translatable_patterns:
             if pattern.fullmatch(stripped_text):
                 if not stripped_text in self.language_map.values():
-                    log.debug(
-                        f"Skipped: Matched non-translatable pattern "
-                        f"'{pattern.pattern}'"
-                    )
+                    log.debug(f"Skipped: Matched non-translatable pattern: '{pattern.pattern}'")
                 return text
                 
- 
-        
         log.debug(f"--- TRANSLATE REQUEST: '{self._redact_sensitive(text)}' ---")
 
         # Split by file paths and translate segments independently

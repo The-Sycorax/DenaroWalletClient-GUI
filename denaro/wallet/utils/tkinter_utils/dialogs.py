@@ -11,26 +11,59 @@ class Dialogs:
     def __init__(self, root):
         self.root = root
         self.dialog_functions = DialogFunctions(self.root, self)
-    
+        self.translation_engine = root.translation_engine    
 
     # =========================================================================
     # == INTERNAL HELPER METHOD
     # =========================================================================
-    def _create_and_run_dialog(self, prompt, title, result_queue=None, on_complete=None, result_processor=None, modal=True, **kwargs):
+
+    def create_dialog(self, prompt, title, result_queue=None, on_complete=None, result_processor=None, modal=True, **kwargs):
         """
-        A centralized, universal helper to create and run a CustomDialog.
-        It operates in three modes depending on the arguments provided:
+        A centralized, internal helper to create and run a 'CustomDialog' instance.
         
-        1. Sync (blocking): If `result_queue` is provided. Puts result in the queue.
-        2. Async (callback): If `on_complete` is provided. Calls on_complete(result).
-        3. Fire-and-forget: If neither is provided. Does nothing on close.
+        It funnels the dialog result into exactly one of three delivery modes:
+            1.**Synchronous (blocking):** If a 'result_queue' (e.g., 'queue.Queue')
+                is provided, the method returns immediately, but the caller can block
+                by calling 'result_queue.get()' to wait for the dialog's result.
+            
+            2.**Asynchronous (callback):** If an 'on_complete' function is provided,
+                the method returns immediately. The 'on_complete' function will be
+                called with the final result when the user closes the dialog.
+            
+            3.**Fire-and-forget:** If neither is provided, the dialog is displayed
+                and no action is taken after it closes.
+    
+        It also decouples raw dialog output from the final desired result via the
+        `result_processor` function.
+    
+        Args:
+            prompt (list): The configuration list for the dialog's widgets.
+            
+            title (str): The title of the dialog window.
+            
+            result_queue (queue.Queue, optional): A queue to put the final result
+                into for synchronous operations.
+            
+            on_complete (callable, optional): A callback function that takes one
+                argument (the final result) for asynchronous operations.
+            
+            result_processor (callable, optional): A function that takes the raw
+                dialog result and transforms it into its final form. If None, a
+                default processor is used which extracts the value from the first
+                widget. The result is always `None` if the dialog is canceled.
+            
+            modal (bool): If True, the dialog will be modal.
+            
+            **kwargs: Additional keyword arguments passed directly to the
+                CustomDialog constructor.
         """
         # Define a default result processor if none is given.
         if result_processor is None:
             def default_processor(res):
+                # Assumes the standard result format: [[value1], [value2], ...]
                 return res[0][0] if res and res[0] else None
             result_processor = default_processor
-
+    
         def process_and_finish(raw_result, was_canceled=False):
             # 1. On cancel, the result is always None. Otherwise, process it.
             final_result = None if was_canceled else result_processor(raw_result)
@@ -42,9 +75,10 @@ class Dialogs:
                 on_complete(final_result)
             # If neither, do nothing.
         
+        # Create callbacks that route the dialog's raw result to our processor.
         on_submit_callback = lambda res: process_and_finish(res, was_canceled=False)
         on_cancel_callback = lambda res: process_and_finish(res, was_canceled=True)
-
+    
         CustomDialog(
             parent=self.root,
             title=title,
@@ -54,27 +88,144 @@ class Dialogs:
             modal=modal,
             **kwargs
         )
+    
+    def create_dialog_with_checks(self, prompt, title, **kwargs):
+        """
+        A smart wrapper that prepares and runs a dialog.
+            
+        Its primary role is to perform a pre-flight check to determine if strings within
+        the dialog requires a significant number of new language translations. If so, it
+        displays an intermediate "messagebox_wait" dialog via self.translation_engine to
+        inform the user of the pending operation, preventing the UI from appearing frozen.
+    
+        The process is as follows:
+          1. It inspects the 'prompt' and 'title' arguments, extracting all user-facing
+             strings from various configuration keys.
+
+          2. It then queries the `translation_engine` to count how many of these strings
+             are new and require language translation.
+
+          3. If the count exceeds a threshold, it initiates a translation batch, schedules
+             the main dialog creation using 'root.after()'. This small delay allows the Tkinter 
+             event loop to process and render the "messagebox_wait" dialog before the main 
+             (potentially blocking) work begins. Otherwise, it creates the dialog immediately.
+
+        The 'try...finally' block ensures that the translation batch is always
+        properly closed, even if an error occurs.
+    
+        Args:
+            prompt (list): The configuration list for the dialog's widgets.
+            
+            title (str): The title of the dialog window.
+            
+            **kwargs: Keyword arguments passed transparently to the underlying
+                'create_dialog' method.
+        """
+        texts_to_check = [title]
+    
+        # Define all the places where text might be found in a prompt item.
+        keys_for_single_strings = {
+            'config': ['text', 'label', 'message'],
+            'insert': ['string'],
+            'tooltip_config': ['text']
+        }
+        keys_for_string_lists = {
+            'config': ['values'] # For widgets like Combobox
+        }
+    
+        for item in prompt:
+            # Respect the 'translate' flag for the entire item
+            if item.get('translate', True):
+                
+                # --- Check for single strings ---
+                for top_level_key, inner_keys in keys_for_single_strings.items():
+                    data_str = item.get(top_level_key)
+                    if data_str and isinstance(data_str, str):
+                        data_dict = CustomDialog.parse_config_string(data_str)
+                        for inner_key in inner_keys:
+                            if inner_key in data_dict:
+                                texts_to_check.append(data_dict[inner_key])
+    
+                # --- Check for lists of strings ---
+                for top_level_key, inner_keys in keys_for_string_lists.items():
+                    data_str = item.get(top_level_key)
+                    if data_str and isinstance(data_str, str):
+                        data_dict = CustomDialog.parse_config_string(data_str)
+                        for inner_key in inner_keys:
+                            if inner_key in data_dict and isinstance(data_dict[inner_key], (list, tuple)):
+                                texts_to_check.extend(data_dict[inner_key])
+        
+        new_translations_count = self.translation_engine.count_new_translations(texts_to_check)
+        show_wait_dialog = new_translations_count >= self.translation_engine.wait_dialog_threshold
+    
+        def do_blocking_work():
+            """Contains the main dialog creation, to be run after any prep work."""
+            try:
+                # This is the primary operation we are preparing for.
+                self.create_dialog(prompt, title, **kwargs)
+            finally:
+                # Ensure the batch is closed, regardless of success or failure.
+                if show_wait_dialog:
+                    self.translation_engine.end_translation_batch()
+    
+        if show_wait_dialog:
+            # Signal the translation engine to expect a batch of requests.
+            self.translation_engine.begin_translation_batch()
+            
+            # Force the UI to update now, so the wait dialog can appear.
+            self.root.update_idletasks()
+            
+            # Schedule the dialog creation to run after a short delay. This gives
+            # the event loop time to render the wait dialog before we block it.
+            self.root.after(50, do_blocking_work)
+        else:
+            # If no wait is needed, run the work immediately.
+            do_blocking_work()
+    
 
     def messagebox(self, title, msg, modal=True, result_queue=None, on_complete=None):
         prompt = [
-            {
-                "type": "label", 
-                "config":"text='{}', wraplength=500, justify='left'".format(msg), 
-                "grid_config":"column=0"
-            },
-                                    
-            {
-                'type': 'button', 
-                "config":"text='Okay'", 
-                "command":"command_str=self.submit_entry", 
-                "grid_config":"row=2, column=0, sticky='we', padx=(0, 5), pady=(10, 0)"
-            }
-            
-            ]
-        # A messagebox just needs to unblock the thread, the return value is not important.
-        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, result_processor=lambda r: True, modal=modal)
-    
+            {"type": "label", 
+             "config":"text='{}', wraplength=500, justify='left'".format(msg), 
+             "grid_config":"column=0"},                                    
 
+            {"type": "button",
+             "config":"text='Okay'",
+             "command":"command_str=self.submit_entry",
+             "grid_config":"row=2, column=0, sticky='we', padx=(0, 5), pady=(10, 0)"}]
+
+        # A messagebox just needs to unblock the thread, the return value is not important.
+        self.create_dialog_with_checks(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, result_processor=lambda r: True, modal=modal)
+    
+    def messagebox_wait(self, title, message, modal=True, result_queue=None, on_complete=None, close_event=None):
+        """
+        A universal dialog that waits for an external close_event (cancel).
+        """
+
+        prompt = [
+            {"type": "label",
+             "widget_name": "label_1",
+             "config":"text='{}', wraplength=500, justify='left'".format(message), 
+             "grid_config": "row=0, column=0, padx=20, pady=20",
+             "command": "command_str='should_close_loop', args='(self, self.callbacks[\"close_event\"])', self.widget_references[\"label_1\"], execute_on_load=True",
+             "frameless": True}
+            ]
+        
+        dialog_callbacks = {
+            "should_close_loop": self.dialog_functions.should_close_loop,
+            "close_event": close_event
+        }
+        
+        self.create_dialog(
+            prompt=prompt,
+            title=title,
+            result_queue=result_queue,
+            on_complete=on_complete,
+            result_processor=lambda r: True,
+            callbacks=dialog_callbacks,
+            modal=modal,
+        )
+        
 
     def address_info(self, event=None, entry_data=None, entry_type=None, modal=True, result_queue=None, on_complete=None):
         
@@ -253,7 +404,7 @@ class Dialogs:
             "toggle_key_visibility": self.dialog_functions.toggle_key_visibility
         }
 
-        self._create_and_run_dialog(
+        self.create_dialog_with_checks(
             prompt=prompt,
             title="Address Information",
             result_queue=result_queue,
@@ -273,15 +424,16 @@ class Dialogs:
         page_titles = ["Wallet File", "Wallet Security", "Recovery Phrase", "Disclaimer & Agreement"]
 
         prompt = [
-            {
-                "type": "frame", "class": "PageIndicators", "widget_name": "indicators",
-                "class_config": f"pages={page_titles}",
-                "grid_config": "column=0, sticky='ew', pady=(0, 15)"
-            },
-            {
-                "type": "frame", "class": "PageManager", "widget_name": "page_manager",
-                "grid_config": "column=0, sticky='nsew'"
-            },
+            {"type": "frame",
+             "class": "PageIndicators",
+             "widget_name": "indicators",
+             "class_config": f"pages={page_titles}",
+             "grid_config": "column=0, sticky='ew', pady=(0, 15)"},
+            
+            {"type": "frame",
+             "class": "PageManager",
+             "widget_name": "page_manager",
+             "grid_config": "column=0, sticky='nsew'"},
 
             # =========================================================================
             # == PAGE 1: Wallet File
@@ -431,7 +583,7 @@ class Dialogs:
             "initial_page_setup": self.dialog_functions.initial_page_setup
         }
 
-        self._create_and_run_dialog(prompt=prompt, title="Security Warnings & Terms",
+        self.create_dialog_with_checks(prompt=prompt, title="Security Warnings & Terms",
             result_queue=result_queue, on_complete=on_complete, modal=modal,
             result_processor=lambda r: True if r else None,
             classes={"PageIndicators": PageIndicators, "PageManager": PageManager},
@@ -451,7 +603,7 @@ class Dialogs:
             """Called after the warning dialog."""
             if user_agreed:
                 self.root.stored_data.warning_agreed = True
-                self._create_wallet_name_step(on_complete=on_wallet_name_provided, modal=modal)
+                self.configure_wallet_step(on_complete=on_wallet_name_provided, modal=modal)
             else:
                 final_handler(None)
 
@@ -468,7 +620,7 @@ class Dialogs:
                 # Define what to do AFTER the error messagebox closes.
                 def on_error_closed(_):
                     # Restart the name entry step.
-                    self._create_wallet_name_step(on_complete=on_wallet_name_provided, modal=modal)
+                    self.configure_wallet_step(on_complete=on_wallet_name_provided, modal=modal)
 
                 # Show the messagebox in ASYNC/CALLBACK mode.
                 self.messagebox(
@@ -523,7 +675,7 @@ class Dialogs:
             on_warning_agreed(True)
 
     
-    def _create_wallet_name_step(self, on_complete, modal=True):
+    def configure_wallet_step(self, on_complete, modal=True):
         """A private helper for the second step of the create wallet workflow."""
         prompt = [     
                     {"type":"label", "config":"text='Create Wallet', font='Helvetica 14 bold'", 
@@ -579,7 +731,7 @@ class Dialogs:
                      "pack_config":"side='right', expand=True, fill=x, padx=(5, 0)"},
                 ]
 
-        self._create_and_run_dialog(prompt=prompt, title="Create New Wallet", on_complete=on_complete,
+        self.create_dialog_with_checks(prompt=prompt, title="Create New Wallet", on_complete=on_complete,
             result_processor=lambda r: r, # Return raw result tuple
             modal=modal,
             callbacks={"enable_2fa_checkbox": self.dialog_functions.enable_2fa_checkbox})
@@ -708,7 +860,7 @@ class Dialogs:
                 if result_queue: result_queue.put(pass1)
                 if on_complete: on_complete(pass1)
             
-            self._create_and_run_dialog(prompt=prompt, title=title, on_complete=handle_result,
+            self.create_dialog_with_checks(prompt=prompt, title=title, on_complete=handle_result,
                 result_processor=lambda res: (res[0][0], res[0][1]),
                 callbacks={"focus_next_widget":self.dialog_functions.focus_next_widget, "set_entry_visibility":self.dialog_functions.set_entry_visibility, "toggle_entry_visibility":self.dialog_functions.toggle_entry_visibility}, classes={"KeyToggle": KeyToggle}, modal=modal)
             
@@ -775,7 +927,7 @@ class Dialogs:
         # Call the helper. The default result processor is perfect for this,
         # as it just needs to extract the single entry's value.
         # We pass the callbacks and classes dicts as keyword arguments.
-        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete,
+        self.create_dialog_with_checks(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete,
                                     callbacks=dialog_callbacks, classes=dialog_classes, modal=modal)
 
     def confirmation_prompt(self, title, msg, msg_2=None, modal=True, result_queue=None, on_complete=None):
@@ -823,7 +975,7 @@ class Dialogs:
         # CustomDialog with `true_on_submit` returns ([True], (), ()) on 'Yes'.
         # We want to convert this to a simple boolean `True`.
         def confirmation_processor(res): return res and res[0] and res[0][0] is True
-        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue,
+        self.create_dialog_with_checks(prompt=prompt, title=title, result_queue=result_queue,
                                     on_complete=on_complete, result_processor=confirmation_processor, true_on_submit=True, modal=modal)
         
 
@@ -835,7 +987,7 @@ class Dialogs:
             {'type': 'button', "config":"text='Cancel'", "command":"command_str='self.cancel'", "grid_config":"row=2, column=1, sticky='ew', padx=(5, 0), pady=(10, 0)"}
         ]
         # We use the default result processor here, so we don't need to pass one.
-        self._create_and_run_dialog(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, modal=modal)
+        self.create_dialog_with_checks(prompt=prompt, title=title, result_queue=result_queue, on_complete=on_complete, modal=modal)
 
 
     def tx_confirmation_dialog(self, sender, receiver, amount, modal=True, result_queue=None, on_complete=None):
@@ -934,7 +1086,7 @@ class Dialogs:
             # The raw_result will be ([True], (True/False,), ()) on 'Yes'
             # or None on 'No'/cancel.
             if raw_result is None:
-                return None # User canceled
+                return None
 
             # Extract the data
             was_confirmed = raw_result[0] and raw_result[0][0] is True
@@ -946,8 +1098,7 @@ class Dialogs:
             return (was_confirmed, disable_dialog)
 
         # Call the helper, passing our custom processor.
-        self._create_and_run_dialog(prompt=prompt, title="Confirm Transaction", result_queue=result_queue,
-                                    on_complete=on_complete, result_processor=tx_processor, true_on_submit=True, modal=modal)
+        self.create_dialog_with_checks(prompt=prompt, title="Confirm Transaction", result_queue=result_queue, on_complete=on_complete, result_processor=tx_processor, true_on_submit=True, modal=modal)
         
 
     def input_listener_dialog(self, modal=True, result_queue=None, on_complete=None, close_event=None):
@@ -974,7 +1125,7 @@ class Dialogs:
         }
         
         # On keypress (submit), the result is True.
-        self._create_and_run_dialog(
+        self.create_dialog_with_checks(
             prompt=prompt,
             title='Wallet Annihilation',
             result_queue=result_queue,
@@ -1003,8 +1154,7 @@ class Dialogs:
         def run_confirmation_step(attempt=None):
             """Helper to start/restart the confirmation step."""
             # Pass the modal flag down to the next step.
-            self._confirm_mnemonic_step(word_list, on_complete=handle_confirmation_result, 
-                                        previous_attempt=attempt, modal=modal)
+            self.confirm_mnemonic_step(word_list, on_complete=handle_confirmation_result, previous_attempt=attempt, modal=modal)
 
         def handle_show_result(user_clicked_next):
             """Called after the user views the mnemonic."""
@@ -1017,7 +1167,7 @@ class Dialogs:
             """Called after the user attempts to confirm the mnemonic."""
             if result == "BACK":
                 # Pass the modal flag when going back to the previous step.
-                self._show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
+                self.show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
             elif result is True:
                 final_handler(True)
             elif isinstance(result, list): # Incorrect attempt
@@ -1035,26 +1185,25 @@ class Dialogs:
             else: # result is None (user canceled)
                 final_handler(False)
 
-        # --- KICK OFF THE WORKFLOW ---
         # Pass the initial modal flag to the first step.
-        self._show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
+        self.show_mnemonic_step(mnemonic, on_complete=handle_show_result, modal=modal)
 
 
-    def _show_mnemonic_step(self, mnemonic, modal=True, on_complete=None):
+    def show_mnemonic_step(self, mnemonic, modal=True, on_complete=None):
         """
         A non-blocking step that shows the mnemonic dialog.
         The prompt is now generated dynamically.
         """
         word_list = mnemonic.split()
         
-        # --- DYNAMIC PROMPT GENERATION ---
         prompt = [
             {"type": "label", "config": "text='The words below is the recovery phrase of the wallet.'", "grid_config": "column=0"},
             {"type": "label", "config": "text='They enable you to access your Denaro and restore your wallet.'", "grid_config": "column=0"},
             {"type": "label", "config": "text='Please write them down in the order shown.'", "grid_config": "column=0"},
             {"type": "separator", "config": "orient='horizontal'", "grid_config": "column=0, sticky='we', pady=(5, 5)"},
         ]
-
+        
+        # --- DYNAMIC PROMPT GENERATION ---
         # Loop to create the 12 read-only entry fields
         for i in range(12):
             word_num = i + 1
@@ -1098,7 +1247,7 @@ class Dialogs:
             {"type": "button", "config":"text='Next'", "parent":"frame_actions", "command":"command_str=self.submit_entry", "pack_config":"side='left', padx=(5, 0), fill='x', expand=True"}
         ])
         
-        self._create_and_run_dialog(
+        self.create_dialog_with_checks(
             prompt=prompt, 
             title='Recovery Phrase Backup', 
             on_complete=on_complete,
@@ -1108,7 +1257,7 @@ class Dialogs:
         )
 
 
-    def _confirm_mnemonic_step(self, original_word_list, modal=True, on_complete=None, previous_attempt=None):
+    def confirm_mnemonic_step(self, original_word_list, modal=True, on_complete=None, previous_attempt=None):
         """
         A non-blocking step that asks the user to confirm the mnemonic.
         Dynamically generates the prompt to pre-fill entries and adds a show/hide button.
@@ -1229,7 +1378,7 @@ class Dialogs:
             "toggle_all_mnemonic_visibility": self.dialog_functions.toggle_all_mnemonic_visibility
         }
 
-        self._create_and_run_dialog(prompt=prompt, title='Confirm Recovery Phrase', on_complete=on_submit,
+        self.create_dialog_with_checks(prompt=prompt, title='Confirm Recovery Phrase', on_complete=on_submit,
                                     result_processor=lambda r: r,
                                     callbacks=dialog_callbacks, classes={"KeyToggle": KeyToggle}, modal=modal)
     
@@ -1298,7 +1447,7 @@ class Dialogs:
                  "grid_config":"row=6, column=1, sticky='e', padx=(0, 10), pady=(75, 10)"}
             ]
         
-        self._create_and_run_dialog(prompt=prompt, title="About", result_queue=result_queue, on_complete=on_complete,
+        self.create_dialog_with_checks(prompt=prompt, title="About", result_queue=result_queue, on_complete=on_complete,
             callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink},
             classes={"HyperlinkLabel": HyperlinkLabel}, modal=modal)
 
@@ -1411,20 +1560,16 @@ class DialogFunctions:
         self.root = root
         self.parent = parent
         self.from_gui = from_gui
-
         self.dialogs = dialogs_instance
         self.active_listener_close_event = None
 
 
-    # address_info functions
     def set_key_visibility(self, widget=None, entry=None, first=False):
         #self.print_variable_values(entry)
-        
         if first:
             #widget.setvar(name='visibility_on', value='True')
             #self.toggle_key_visibility(widget, entry)
             entry.pack_forget()
-
         visibility_on = widget.visibility_on
         if visibility_on:
              visibility_img = Image.open("./denaro/gui_assets/visibility_on.png")
@@ -1432,18 +1577,16 @@ class DialogFunctions:
              visibility_img = ImageTk.PhotoImage(visibility_img)
              widget.config(image=visibility_img)
              widget.visibility_img = visibility_img
-             
         else:
             visibility_img = Image.open("./denaro/gui_assets/visibility_off.png")
             visibility_img = visibility_img.resize((32, 32), Image.LANCZOS)
             visibility_img = ImageTk.PhotoImage(visibility_img)
             widget.config(image=visibility_img)
             widget.visibility_img = visibility_img
- 
-    
+
+
     def toggle_key_visibility(self, widget=None, entry=None, state=None):
         visibility_on = widget.visibility_on
-
         if visibility_on:
             widget.visibility_on = False
             self.set_key_visibility(widget, entry)
@@ -1455,13 +1598,10 @@ class DialogFunctions:
 
 
     def set_entry_visibility(self, widget=None, entry=None, first=False):
-        #self.print_variable_values(entry)
-        
         if first:
             #widget.setvar(name='visibility_on', value='True')
             #self.toggle_key_visibility(widget, entry)
             entry.config(show='*')
-
         visibility_on = widget.visibility_on
         if visibility_on:
              visibility_img = Image.open("./denaro/gui_assets/visibility_on.png")
@@ -1469,15 +1609,14 @@ class DialogFunctions:
              visibility_img = ImageTk.PhotoImage(visibility_img)
              widget.config(image=visibility_img)
              widget.visibility_img = visibility_img
-             
         else:
             visibility_img = Image.open("./denaro/gui_assets/visibility_off.png")
             visibility_img = visibility_img.resize((24, 24), Image.LANCZOS)
             visibility_img = ImageTk.PhotoImage(visibility_img)
             widget.config(image=visibility_img)
             widget.visibility_img = visibility_img
- 
-    
+
+
     def toggle_entry_visibility(self, widget=None, entry=None, state=None):
         visibility_on = widget.visibility_on
 
@@ -1489,7 +1628,7 @@ class DialogFunctions:
             widget.visibility_on = True
             self.set_entry_visibility(widget, entry)
             entry.config(show='')
-    
+
 
     def toggle_all_mnemonic_visibility(self, button=None, dialog=None, state=None):
         """
@@ -1527,7 +1666,8 @@ class DialogFunctions:
                 
                 # 3. Call set_entry_visibility to update the toggle's icon.
                 self.set_entry_visibility(widget=toggle_widget, entry=entry_widget)
-    
+
+
     def toggle_continue_button_state(self, checkbox=None, continue_button=None):
         """
         The CORE LOGIC. Enables or disables a button based on a checkbox.
@@ -1584,12 +1724,12 @@ class DialogFunctions:
         close_event = get_close_event_func()
 
         # Start the loop that checks for the external close signal.
-        self.check_if_should_close_loop(dialog, close_event)
+        self.should_close_loop(dialog=dialog, close_event=close_event)
         # Start the loop that updates the countdown text.
         self.update_view_loop(dialog, label)
 
 
-    def check_if_should_close_loop(self, dialog, close_event):
+    def should_close_loop(self, dialog, close_event=None, label=None, event=None, state=None):
         """The recurring check for the controller's close signal."""
         try:
             if not dialog.dialog.winfo_exists(): return
@@ -1598,7 +1738,7 @@ class DialogFunctions:
                 dialog.cancel() # Triggers on_cancel, puts None in the queue.
                 return
 
-            dialog.dialog.after(100, lambda: self.check_if_should_close_loop(dialog, close_event))
+            dialog.dialog.after(50, lambda: self.should_close_loop(dialog, close_event=close_event, label=label))
         except tk.TclError:
             pass
 
@@ -1623,46 +1763,27 @@ class DialogFunctions:
             pass
 
 
-    def _ui_listener_thread_target(self, stop_signal, interrupt_queue):
+    def input_listener_thread_target(self, stop_signal, interrupt_queue):
         """The target for the secondary worker thread (Thread B)."""
         close_event = self.get_active_listener_close_event()
         result = self.root.wallet_operations.callbacks.post_input_listener_dialog(close_event=close_event)
         interrupt_queue.put(result)
 
 
-    def setup_ui_listener_thread(self, close_event, interrupt_queue):
+    def setup_input_listener_thread(self, close_event, interrupt_queue):
         """The bridge function that stores context and starts Thread B."""
         self.active_listener_close_event = close_event
         self.root.wallet_thread_manager.start_thread(
-            name="ui_input_listener_blocker",
-            target=self._ui_listener_thread_target,
+            name="input_listener_blocker",
+            target=self.input_listener_thread_target,
             args=(interrupt_queue,)
         )
-    
+
+
     def confirm_mnemonic_back_button_press(self, state=None):
         self.root.stored_data.confirm_mnemonic_back_button_press = True
 
-    #DEBUG FUNCTIONS
-    def get_config(self, widget):
-        options = {}
-        for i in widget.keys():
-            value = widget.cget(i)
-            options[i] = value.string if type(value) is _tkinter.Tcl_Obj else value
-        return options, widget.winfo_parent()
-    
-    #def print_variable_values(self, widget):
-    #        # Retrieve all variable names associated with the widget
-    #    variable_names = widget.tk.splitlist(widget.tk.call('info', 'vars'))
-    #    
-    #    # Print the values of these variables
-    #    for var_name in variable_names:
-    #        try:
-    #            # Check if the variable is not an array
-    #            value = widget.getvar(var_name)
-    #            print(f"Variable '{var_name}' has value: {value}")
-    #        except tk.TclError as e:
-    #            pass  
-    
+
     def focus_next_widget(self, event, state=None):
         # Find the next widget in the focus order
         next_widget = event.widget.tk_focusNext()
@@ -1673,7 +1794,8 @@ class DialogFunctions:
         if next_widget:
             next_widget.focus()
         return "break"
-    
+
+
     def copy_mnemonic_to_clipboard(self, mnemonic=None, label=None, event=None, state=None):
         self.root.clipboard_clear()
         self.root.clipboard_append(mnemonic)
@@ -1687,27 +1809,27 @@ class DialogFunctions:
         #        return
         #else:
         self.root.wallet_thread_manager.start_thread("fade_copied_mnemonic_label", self.root.gui_utils.fade_text, args=(label, 'copied_mnemonic_label', 1.25),)
-    
+
+
     def set_label_image(self, label=None, image_path=None, width=None, height=None, state=None):
         image = Image.open(image_path)
         image = image.resize((width, height), Image.LANCZOS)
         image = ImageTk.PhotoImage(image)
         label.config(image=image)
         label.image = image
-    
+
+
     def set_hyperlink(self, label=None, hyperlink_url=None, state=None):
         hyperlink_tag = f"hyperlink-{hyperlink_url}"
         start = self.root.send_page.tx_log.search(hyperlink_url, "1.0", tk.END)
-      
         end = f"{start}+{len(hyperlink_url)}c"
-      
         label.tag_add(hyperlink_tag, start, end)
         label.tag_config(hyperlink_tag, foreground="blue", underline=True)
         label.tag_bind(hyperlink_tag, "<Enter>", self.root.gui_utils.on_link_enter)
         label.tag_bind(hyperlink_tag, "<Leave>", self.root.gui_utils.on_link_leave)
         label.tag_bind(hyperlink_tag, "<Button-1>", lambda e, url=hyperlink_url: self.root.gui_utils.open_link(url))
 
-       
+
     #2FA Dialog functions
     def _2FA_initial_setup(self, dialog_instance, first=None):
         if self.root.is_closing: return
@@ -1733,6 +1855,7 @@ class DialogFunctions:
         self.root.dialog_instance.cancel = self._2FA_on_close
         self._2FA_update_timer()
 
+
     def _2FA_update_timer(self):
         if self.root.is_closing: return
         if self.root.close_window: self._2FA_on_close(); return
@@ -1751,6 +1874,7 @@ class DialogFunctions:
                 return
         else:
             self._2FA_on_close()
+
 
     def _2FA_handle_click(self):
         if self.root.is_closing: return
@@ -1773,9 +1897,11 @@ class DialogFunctions:
             self._2FA_hide_context_menu()
         secret_entry.config(state='readonly')
 
+
     def _2FA_handle_double_click(self, event):
         if not self.root.reveal_secret:
             return "break"
+
 
     def _2FA_handle_context_menu(self, event):
         if self.root.is_closing: return
@@ -1786,15 +1912,18 @@ class DialogFunctions:
             except tk.TclError:
                 pass
 
+
     def _2FA_hide_context_menu(self):
         if self.root.is_closing: return
         try: self.root.context_menu.unpost()
         except tk.TclError: pass
 
+
     def _2FA_context_copy(self, event=None):
         if self.root.is_closing or not self.root.reveal_secret: return "break"
         secret_entry = self.root.dialog_instance.widget_references.get('secret_entry')
         if secret_entry: secret_entry.event_generate("<<Copy>>")
+
 
     def _2FA_context_select_all(self, event=None):
         if self.root.is_closing or not self.root.reveal_secret: return "break"
@@ -1803,6 +1932,7 @@ class DialogFunctions:
             secret_entry.focus_set()
             secret_entry.select_range(0, 'end')
         return "break"
+
 
     def _2FA_on_close(self, event=None):
         if self.root.is_closing: return
@@ -1819,7 +1949,7 @@ class DialogFunctions:
             self.root.qr_img, self.root.totp_secret, self.root.tk_image
         ])
 
-    
+
     def initial_page_setup(self, dialog, state=None):
         """
         Called once after the dialog is built. It links the PageManager to its
@@ -1840,7 +1970,6 @@ class DialogFunctions:
                     continue
         
         page_manager.show_page(1)
-        
 
 
     def go_to_next_page(self, dialog, state=None):
@@ -1854,6 +1983,27 @@ class DialogFunctions:
         page_manager = dialog.widget_references.get('page_manager')
         if page_manager:
             page_manager.show_page(page_manager.current_page - 1)
+
+     #DEBUG FUNCTIONS
+    def get_config(self, widget):
+        options = {}
+        for i in widget.keys():
+            value = widget.cget(i)
+            options[i] = value.string if type(value) is _tkinter.Tcl_Obj else value
+        return options, widget.winfo_parent()
+    
+    #def print_variable_values(self, widget):
+    #        # Retrieve all variable names associated with the widget
+    #    variable_names = widget.tk.splitlist(widget.tk.call('info', 'vars'))
+    #    
+    #    # Print the values of these variables
+    #    for var_name in variable_names:
+    #        try:
+    #            # Check if the variable is not an array
+    #            value = widget.getvar(var_name)
+    #            print(f"Variable '{var_name}' has value: {value}")
+    #        except tk.TclError as e:
+    #            pass  
 
 
 class KeyToggle:

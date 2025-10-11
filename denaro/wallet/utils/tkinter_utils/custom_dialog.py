@@ -126,6 +126,10 @@ class CustomDialog:
             if grid_config:
                 row_count += 1
         
+            frameless = item.get('frameless', False)
+            if frameless:
+                self.dialog.overrideredirect(True)
+
         self.dialog.update_idletasks()
         
         self.center_dialog(parent)
@@ -345,9 +349,9 @@ class CustomDialog:
         #text_width = min(max_width, text_width)
         return int(text_width / size) + 26  # Adding a little extra space
         #return adjust_width
-
-
-    def parse_config_string(self, config_str):
+    
+    @staticmethod
+    def parse_config_string(config_str=None):
         """
         Parses a configuration string into a dictionary. The string is expected to contain key-value pairs
         separated by commas. Values can be quoted strings, numbers, lists, or tuples.

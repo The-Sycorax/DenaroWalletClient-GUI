@@ -103,8 +103,15 @@ import html
 import weakref
 
 # Third-party translation library imports
-import argostranslate.package
-import argostranslate.translate
+# argostranslate is imported conditionally based on settings
+argostranslate = None
+try:
+    import argostranslate.package
+    import argostranslate.translate
+    argostranslate_installed = True
+except ImportError:
+    argostranslate_installed = False
+
 from deep_translator import GoogleTranslator
 from .argos_language_map import language_map
 
@@ -142,7 +149,7 @@ class TkinterUniversalLanguageTranslator:
         >>> engine.set_language('en')  # Disable translation
     """
 
-    def __init__(self, source_language='en', target_language='en'):
+    def __init__(self, source_language='en', target_language='en', translation_module='deep-translator'):
         """
         Initialize the translation engine.
 
@@ -151,6 +158,8 @@ class TkinterUniversalLanguageTranslator:
                 This is the language your application is written in.
             target_language (str): ISO 639-1 target language code (default: 'en').
                 Set this equal to source_language to start with translation disabled.
+            translation_module (str): Translation module to use ('argostranslate' or 'deep-translator').
+                Defaults to 'deep-translator'.
                 
         Note:
             Translation is only enabled if source_language != target_language.
@@ -159,6 +168,7 @@ class TkinterUniversalLanguageTranslator:
         # Control and configuration
         self.source_lang_code = source_language
         self.target_lang_code = target_language
+        self.translation_module = translation_module
         self.translation_enabled = (source_language != target_language)
         self.in_no_translate_block = False
         
@@ -238,23 +248,29 @@ class TkinterUniversalLanguageTranslator:
         self.cache = self._load_cache()
         self.reverse_cache = {v: k for k, v in self.cache.items()}
         
-        # Initialize Google Translator (online API)
-        try:
-            self.google_translator = GoogleTranslator(
-                source=self.source_lang_code,
-                target=self.target_lang_code
-            )
-        except Exception as e:
-            if "No support for the provided language" in str(e):
-                log.error(
-                    f"No support for the provided language: Google Translator does not support "
-                    f"{self.source_lang_code} → {self.target_lang_code}"
+        # Initialize Google Translator (online API) - only if using deep-translator
+        if self.translation_module == 'deep-translator':
+            try:
+                self.google_translator = GoogleTranslator(
+                    source=self.source_lang_code,
+                    target=self.target_lang_code
                 )
-            else:
-                log.error(f"Failed to initialize Google Translator: {e}")
+            except Exception as e:
+                if "No support for the provided language" in str(e):
+                    log.error(
+                        f"No support for the provided language: Google Translator does not support "
+                        f"{self.source_lang_code} → {self.target_lang_code}"
+                    )
+                else:
+                    log.error(f"Failed to initialize Google Translator: {e}")
+        else:
+            self.google_translator = None
             
-        # Initialize Argos Translate (offline model)
-        self._initialize_argos()
+        # Initialize Argos Translate (offline model) - only if using argostranslate
+        if self.translation_module == 'argostranslate':
+            self._initialize_argos()
+        else:
+            self.argos_translator = None
         
         # Reset statistics for new session
         self.api_calls, self.offline_hits, self.cache_hits = 0, 0, 0
@@ -676,6 +692,11 @@ class TkinterUniversalLanguageTranslator:
             If initialization fails, the engine gracefully falls back to
             online-only translation without interrupting operation.
         """
+        if not argostranslate_installed:
+            log.error("Argos Translate is not installed. Please install it via pip.")
+            self.argos_translator = None
+            return
+            
         try:
             self.argos_translator = argostranslate.translate.get_translation_from_codes(
                 self.source_lang_code,
@@ -752,8 +773,8 @@ class TkinterUniversalLanguageTranslator:
         log.debug("Cache MISS, attempting translation...")
         translated_text = None
 
-        # Tier 2: Offline translation (Argos)
-        if self.argos_translator:
+        # Tier 2: Offline translation (Argos) - only if using argostranslate
+        if self.translation_module == 'argostranslate' and self.argos_translator:
             try:
                 # Escape HTML entities to prevent mishandling of special characters
                 escaped_segment = html.escape(segment, quote=False)
@@ -769,8 +790,8 @@ class TkinterUniversalLanguageTranslator:
             except Exception as e:
                 log.warning(f"Argos Translate error: {e}")
 
-        # Tier 3: Online fallback (Google)
-        if not translated_text and self.google_translator:
+        # Tier 3: Online fallback (Google) - only if using deep-translator
+        if self.translation_module == 'deep-translator' and not translated_text and self.google_translator:
             log.debug("Offline MISS, falling back to online API...")
             try:
                 result = self.google_translator.translate(segment)
@@ -1382,7 +1403,7 @@ class TkinterUniversalLanguageTranslator:
         return self
 
 
-def activate_tkinter_translation(source_language='en', target_language='en', log_level=logging.INFO, **kwargs):
+def activate_tkinter_translation(source_language='en', target_language='en', log_level=None, **kwargs):
     """
     Initializes and activates the translation engine.
 
@@ -1407,15 +1428,17 @@ def activate_tkinter_translation(source_language='en', target_language='en', log
                                     be used to change languages at runtime.
     """
     # Configure a default stream handler if none exists for this logger.
-    if not logging.getLogger("TkinterTranslator").hasHandlers():
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(name)s [%(levelname)s] - %(message)s', datefmt='%H:%M:%S')
-        handler.setFormatter(formatter)
-        log.addHandler(handler)
-    
-    log.setLevel(log_level)
+    if log_level is not None:
+        if not logging.getLogger("TkinterTranslator").hasHandlers():
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s [%(levelname)s] - %(message)s', datefmt='%H:%M:%S')
+            handler.setFormatter(formatter)
+            log.addHandler(handler)
+        
+        log.setLevel(log_level)
 
-    engine = TkinterUniversalLanguageTranslator(source_language=source_language, target_language=target_language)
+    translation_module = kwargs.get('translation_module', 'deep-translator')
+    engine = TkinterUniversalLanguageTranslator(source_language=source_language, target_language=target_language, translation_module=translation_module)
     engine.sensitive_patterns = kwargs.get('sensitive_patterns', [])
     engine.non_translatable_patterns = kwargs.get('non_translatable_patterns', [])
 

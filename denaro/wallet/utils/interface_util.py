@@ -257,7 +257,7 @@ class UserPrompts:
 
         # Handle the backup preference
         if from_gui:
-            perform_backup = callback_object.post_confirmation_prompt('Backup Wallet', 'Wallet file already exists. Do you want to back it up?')
+            perform_backup = callback_object.post_confirmation_prompt('Backup Wallet', 'Wallet file already exists.\nDo you want to back it up?')
         else:
             perform_backup = UserPrompts.confirmation_prompt("WARNING: Wallet already exists. Do you want to back it up? [y/n] (or type '/q' to exit the script): ", backup)
 

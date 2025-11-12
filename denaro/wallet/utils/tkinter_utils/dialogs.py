@@ -938,7 +938,7 @@ class Dialogs:
         # Define the UI layout for the dialog.
         prompt = [
                     {"type": "label", 
-                     "config":"text={}".format(msg), 
+                     "config":"text={}, justify='center', wraplength=500".format(msg), 
                      "grid_config":"column=0"},
                                             
                     {"type":"frame", 

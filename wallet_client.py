@@ -1497,7 +1497,7 @@ def read_config(config_path='settings.cfg', disable_err_msg = False):
     - dict: The configuration as a dictionary, or None if the file is not found or contains invalid JSON.
     """
     if not os.path.exists(config_path):
-        config = {"default_node": "http://localhost:3006", "node_validation": "False", "default_currency": "USD", "disable_exchange_rate_features": "True", "language": "en"}
+        config = {"default_node": "http://localhost:3006", "node_validation": "False", "default_currency": "USD", "disable_exchange_rate_features": "True", "language": "en", "translation_module": "deep-translator"}
         write_config(config=config)
 
     try:
@@ -1511,6 +1511,15 @@ def read_config(config_path='settings.cfg', disable_err_msg = False):
             if not 'language' in config_values:
                 config_values['language'] = "en"
                 write_config(config=config_values)
+            
+            # If translation_module is missing (translation is disabled), ensure language is English
+            if not 'translation_module' in config_values:
+                if config_values.get('language') != 'en':
+                    config_values['language'] = "en"
+                    write_config(config=config_values)
+            
+            # Don't automatically add translation_module - if it's missing, translation is disabled
+            # It's only added during initial config creation (in the block above)
            
         
             return config_values  # Loads and returns the configuration as a dictionary
@@ -2248,17 +2257,8 @@ def get_price_info(currency_code=None):
             price_usd = Decimal(cmc_response.json()['data']['priceUsd']).quantize(Decimal('0.0000001'))
         except requests.RequestException as e:
             print(f"\nError during request to CoinMarketCap API:\n {e}")
-            # Fallback URL if the first request fails
-            try:
-                fallback_url = 'https://cmc-api.denaro.is/price'
-                print(f"\nUsing fallback API at: {fallback_url}")
-                fallback_response = requests.get(fallback_url)
-                fallback_response.raise_for_status()
-                price_usd = Decimal(fallback_response.json()['USD']).quantize(Decimal('0.00000001'))
-            except requests.RequestException as e:
-                print(f"\nError during request to fallback API:\n {e}")
-                print("\nFailed to get the real-world price of Denaro.")
-                price_usd = Decimal('0')
+            print("\nFailed to get the real-world price of Denaro.")
+            price_usd = Decimal('0')
 
         # Early return for USD
         if currency_code == 'USD':
@@ -2748,7 +2748,7 @@ def main():
         transaction, _ = prepareTransaction(filename=args.wallet, password=args.password, totp_code=args.tfacode if args.tfacode else "", amount=args.amount, sender=args.address if args.address else None, private_key=args.private_key if args.private_key else None, receiver=args.receiver, message=args.message, node=args.node)
         if transaction:
             print(f'Transaction successfully pushed to node. \nTransaction hash: {sha256(transaction.hex())}')
-            print(f'\nDenaro Explorer link: http://explorer.denaro.is/transaction/{sha256(transaction.hex())}')
+            print(f'\nDenaro Explorer link: https://denaro-explorer.aldgram-solutions.fr/tx/{sha256(transaction.hex())}')
     
     elif args.command == 'balance':
         # Check if the currency code is valid and get the corresponding symbol

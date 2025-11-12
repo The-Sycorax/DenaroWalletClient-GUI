@@ -31,22 +31,19 @@ sys.path.insert(0, dir_path + "/denaro/wallet")
 sys.path.insert(0, dir_path + "/denaro/wallet/utils")
 
 import wallet_client
-from denaro.wallet.utils.wallet_generation_util import sha256
+from denaro.wallet.utils.wallet_generation_util import sha256, generate_bip39_mnemonic_pattern
+from denaro.wallet.utils.thread_manager import WalletThreadManager
 from denaro.wallet.utils.tkinter_utils.custom_auto_complete_combobox import AutocompleteCombobox
 from denaro.wallet.utils.tkinter_utils.custom_dialog import CustomDialog
 from denaro.wallet.utils.tkinter_utils.dialogs import Dialogs
 from denaro.wallet.utils.tkinter_utils.custom_popup import CustomPopup
-from denaro.wallet.utils.thread_manager import WalletThreadManager
-
-#from denaro.wallet.utils.tkinter_utils.language_translation_google import activate_tkinter_translation
-#engine = activate_tkinter_translation(target_language='de')
+from denaro.wallet.utils.tkinter_utils.mutually_exclusive_checkbox import MutuallyExclusiveCheckbox
 import denaro.wallet.utils.tkinter_utils.universal_language_translator as universal_language_translator
 
 # Patterns for SENSITIVE data that must be redacted from logs and securely deleted.
 sensitive_patterns = [
     re.compile(wallet_client.ADDRESS_PATTERN), # Denaro Wallet Address
-    re.compile(r'^(\b\w+\b\s+){11}\b\w+\b$'),  # 12-word Mnemonic
-    re.compile(r'^(\b\w+\b\s+){23}\b\w+\b$'),  # 24-word Mnemonic
+    re.compile(generate_bip39_mnemonic_pattern()),  # 12-word BIP39 Mnemonic
     re.compile(r'^(0x)?[0-9a-fA-F]{32,}$'),    # Long Hex (Private Keys, Hashes)
 ]
         
@@ -54,11 +51,8 @@ sensitive_patterns = [
 non_translatable_patterns = [
     re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$'),     # IP Addresses
     re.compile(r'^(https?://|ftp://|www\.)[^\s]+$'),                # URLs
-    re.compile(r'^Denaro Wallet Client v[0-9\.\-a-zA-Z]+\sGUI.*$'), # App Title
-     re.compile(r'^العربية|中文|English|Français|Deutsch|हिन्दी|Italiano|日本語|Polski|Português|Русский|Español|Türkçe'), # Language Names
+    re.compile(r'^Denaro Wallet Client v[0-9\.\-a-zA-Z]+\sGUI.*$'), # Title
 ]
-
-
 
 class BasePage(ttk.Frame):
     def __init__(self, parent, root, *args, **kwargs):
@@ -409,6 +403,10 @@ class SettingsPage(BasePage):
         self.language = ""
         # ----------------------------------------
 
+        # --- Translation module change handling flags ---
+        self._is_updating_translation_module = False
+        # ----------------------------------------
+
         self.keep_save_button_disabled = False
 
         self.create_widgets()  # Create and place widgets
@@ -442,22 +440,40 @@ class SettingsPage(BasePage):
         # Node validation checkbox
         self.disable_node_validation_checkbox.grid(row=3, column=0, sticky='w', padx=5, pady=10)
         self.test_connection_button.grid(row=3, column=2, sticky='e', padx=5, pady=10)
+        self.node_validation_msg_label.grid(row=3, column=0, sticky='w', padx=5, pady=(75,0))
         
         # Ensure the denaro_node_frame columns do not affect the overall layout
         self.denaro_node_frame.columnconfigure(0, weight=1)
-        self.denaro_node_frame.columnconfigure(1, weight=0)  # Minimal weight to colon column
+        self.denaro_node_frame.columnconfigure(1, weight=0)
         self.denaro_node_frame.columnconfigure(2, weight=1)
         
-        # --- Position the language widgets ---
-        self.language_frame.grid(row=2, column=0, sticky='ew', padx=10)
+        # --- Position the language translation settings frame ---
+        self.language_translation_frame.grid(row=2, column=0, sticky='ew', padx=10, pady=5)
+        
+        # Translation Module section
+        self.translation_module_section_label.pack(fill='x', padx=5, pady=(5, 2))
+        self.translation_module_frame.pack(fill='x', padx=(25, 5), pady=2)
+        self.argostranslate_checkbox.pack(side='left', padx=5, pady=2)
+        self.deep_translator_checkbox.pack(side='left', padx=5, pady=2)
+        
+        # Translation module label (below checkboxes)
+        self.translation_module_label.pack(fill='x', padx=(25, 5), pady=(0, 5))
+        
+        # Language selection widgets inside the frame
+        self.language_frame.pack(fill='x', padx=5, pady=5)
         self.language_label.pack(side='left', padx=5, pady=5)
         self.language_combobox.pack(side='left', padx=5, pady=5)
-        self.valid_language_label.pack(side='left', padx=5, pady=5) # Position the new label
+        self.valid_language_label.pack(side='left', padx=5, pady=5)
+        
+        # Language cache widgets
+        self.language_cache_frame.pack(fill='x', padx=5, pady=5)
+        self.language_cache_label.pack(side='left', padx=5, pady=5)
+        self.language_cache_combobox.pack(side='left', padx=5, pady=5)
+        self.clear_cache_button.pack(side='left', padx=5, pady=5)
         # ---------------------------------------------
 
         # Save config button
-        self.save_config_frame.grid(row=4, column=0, sticky='we', padx=10)
-        self.node_validation_msg_label.pack(padx=5, anchor='w')
+        self.save_config_frame.grid(row=3, column=0, sticky='we', padx=10)
         self.save_config_button.pack(pady=10, side='right')
 
 
@@ -516,9 +532,35 @@ class SettingsPage(BasePage):
 
         self.test_connection_button = tb.Button(self.denaro_node_frame, text="Test Connection")
         self.test_connection_button.config(command=lambda: self.test_node_connection())
+        self.node_validation_msg_label = tb.Label(self.denaro_node_frame, text="")
+
         
+        # --- Language Translation Settings LabelFrame ---
+        self.language_translation_frame = tb.LabelFrame(self, text="Language Translation Settings")
+        
+        # --- Translation Module section ---
+        self.translation_module_section_label = tb.Label(self.language_translation_frame, text="Translation Module:")
+        self.translation_module_frame = tb.Frame(self.language_translation_frame)
+        with self.root.translation_engine.no_translate():
+            self.argostranslate_checkbox = MutuallyExclusiveCheckbox(
+                self.translation_module_frame, 
+                text='Argos Translate',
+                callback=self.on_translation_module_change
+            )
+        with self.root.translation_engine.no_translate():
+            self.deep_translator_checkbox = MutuallyExclusiveCheckbox(
+                self.translation_module_frame, 
+                text='Deep Translator',
+                callback=self.on_translation_module_change
+            )
+        # Bind the checkboxes together for mutual exclusivity
+        MutuallyExclusiveCheckbox.bind_group(self.argostranslate_checkbox, self.deep_translator_checkbox)
+        
+        self.translation_module_label = tb.Label(self.language_translation_frame, text="", foreground='gray')
+        # ------------------------------------------
+
         # --- Language widget creation ---
-        self.language_frame = tb.Frame(self)
+        self.language_frame = tb.Frame(self.language_translation_frame)
         self.language_label = tb.Label(self.language_frame, text="Language:")
         
         # The combobox uses the display names (the dictionary values)
@@ -534,9 +576,17 @@ class SettingsPage(BasePage):
         self.valid_language_label = tb.Label(self.language_frame)
         # ------------------------------------------
 
+        # --- Language cache widgets ---
+        self.language_cache_frame = tb.Frame(self.language_translation_frame)
+        self.language_cache_label = tb.Label(self.language_cache_frame, text="Language Cache:")
+        self.language_cache_combobox = tb.Combobox(self.language_cache_frame, state='readonly', width=30)
+        self.language_cache_combobox.bind('<<ComboboxSelected>>', lambda e: self.update_clear_cache_button_state())
+        self.clear_cache_button = tb.Button(self.language_cache_frame, text="Clear", command=self.clear_language_cache)
+        self.update_language_cache_list()
+        # ------------------------------------------
+
         # Save config button
         self.save_config_frame = tb.Frame(self)
-        self.node_validation_msg_label = tb.Label(self.save_config_frame, text="")
         self.save_config_button = tb.Button(self.save_config_frame, text="Save Settings", state='disabled')
         self.save_config_button.config(command=lambda: self.root.config_handler.save_config())
         #######################################################################################
@@ -600,10 +650,186 @@ class SettingsPage(BasePage):
             # prev_language should track the display name
             self.prev_language = current_display_name
             self.update_save_button_state()
-    # ----------------------------------------
+
+
+    def _set_translation_module_state(self, module, update_prev_state=True):
+        """Helper method to set translation module checkbox state"""
+        self._is_updating_translation_module = True
+        try:
+            if module == 'argostranslate':
+                self.argostranslate_checkbox.set(True)
+                self.update_translation_module_label('argostranslate')
+            elif module == 'deep-translator':
+                self.deep_translator_checkbox.set(True)
+                self.update_translation_module_label('deep-translator')
+            else:
+                # Uncheck both (translation disabled)
+                self.argostranslate_checkbox.set(False)
+                self.deep_translator_checkbox.set(False)
+                self.update_translation_module_label(None)
+        finally:
+            self._is_updating_translation_module = False
+
+    def on_translation_module_change(self, checkbox, is_checked):
+        """Handle changes to translation module checkboxes"""
+        # Prevent recursive calls during programmatic updates
+        if self._is_updating_translation_module:
+            return
+        
+        argostranslate_checked = self.argostranslate_checkbox.get()
+        deep_translator_checked = self.deep_translator_checkbox.get()
+        
+        # Handle normal state: one checkbox is checked
+        if argostranslate_checked:
+            self.update_translation_module_label('argostranslate')
+            self.language_combobox.config(state='normal')
+            self.update_save_button_state()
+        elif deep_translator_checked:
+            self.update_translation_module_label('deep-translator')
+            self.language_combobox.config(state='normal')
+            self.update_save_button_state()
+        else:
+            # Both are unchecked - show confirmation if user manually unchecked one
+            # But only if translation is currently enabled (not already disabled)
+            current_translation_module = self.root.config_handler.config_values.get('translation_module')
+            translation_already_disabled = (current_translation_module is None or current_translation_module == '')
+            
+            # Determine which module was just unchecked
+            module_to_restore = 'argostranslate' if checkbox is self.argostranslate_checkbox else 'deep-translator'
+            
+            # If translation is already disabled, just update the UI state without showing dialog
+            if translation_already_disabled:
+                self.update_translation_module_label(None)
+                self.language_combobox.config(state='disabled')
+                self.update_save_button_state()
+                return
+            
+            def on_user_confirmation(confirmed):
+                if not confirmed:
+                    # User canceled - restore the checkbox that was just unchecked
+                    self._is_updating_translation_module = True
+                    try:
+                        self._set_translation_module_state(module_to_restore)
+                        self.language_combobox.config(state='normal')
+                    finally:
+                        self._is_updating_translation_module = False
+                else:
+                    # User confirmed - translation is disabled
+                    self.update_translation_module_label(None)
+                    self.language_combobox.config(state='disabled')
+                    self.update_save_button_state()
+            
+            # Show confirmation dialog
+            self.root.dialogs.confirmation_prompt(
+                title="Disable Language Translation",
+                msg="Leaving the Translation Module unset will disable language translation and set the current language to English once the settings are saved.\nDo you want to continue?",
+                on_complete=on_user_confirmation
+            )
+
+    def update_translation_module_label(self, module):
+        """Update the translation module label based on selected module"""
+        if module == 'argostranslate':
+            self.translation_module_label.config(
+                text="Argos Translate uses PyTorch and can be resource intensive on slower systems.",
+                foreground='green'
+            )
+        elif module == 'deep-translator':
+            self.translation_module_label.config(
+                text="Deep Translator may reduce privacy as it uses the Internet and Google Translate.",
+                foreground='green'
+            )
+        else:
+            self.translation_module_label.config(text="", foreground='gray')
+
+    def update_language_cache_list(self):
+        """Update the language cache combobox with available cache files"""
+        cache_dir = "language_cache"
+        cache_files = []
+        if os.path.exists(cache_dir):
+            for filename in os.listdir(cache_dir):
+                if filename.endswith('.json'):
+                    cache_files.append(filename)
+        cache_files.sort()
+        self.language_cache_combobox['values'] = cache_files
+        if cache_files:
+            self.language_cache_combobox.current(0)
+            self.update_clear_cache_button_state()
+        else:
+            self.clear_cache_button.config(state='disabled')
+    
+    def update_clear_cache_button_state(self):
+        """Update the Clear Language Cache button state based on selected cache file content"""
+        selected_file = self.language_cache_combobox.get()
+        if not selected_file:
+            self.clear_cache_button.config(state='disabled')
+            return
+        
+        cache_dir = "language_cache"
+        cache_file_path = os.path.join(cache_dir, selected_file)
+        
+        if os.path.exists(cache_file_path):
+            try:
+                with open(cache_file_path, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                    if cache_data and len(cache_data) > 0:
+                        # Cache has content - enable button
+                        self.clear_cache_button.config(state='normal')
+                    else:
+                        # Cache is empty - disable button
+                        self.clear_cache_button.config(state='disabled')
+            except (json.JSONDecodeError, ValueError, IOError):
+                # If file is invalid JSON or can't be read, disable button
+                self.clear_cache_button.config(state='disabled')
+        else:
+            # File doesn't exist - disable button
+            self.clear_cache_button.config(state='disabled')
+
+    def clear_language_cache(self):
+        """Clear the selected language cache file"""
+        selected_file = self.language_cache_combobox.get()
+        if not selected_file:
+            return
+        
+        cache_dir = "language_cache"
+        cache_file_path = os.path.join(cache_dir, selected_file)
+        
+        if os.path.exists(cache_file_path):
+            try:
+                # Check if cache file has content before clearing
+                cache_has_content = False
+                try:
+                    with open(cache_file_path, 'r', encoding='utf-8') as f:
+                        cache_data = json.load(f)
+                        if cache_data and len(cache_data) > 0:
+                            cache_has_content = True
+                except (json.JSONDecodeError, ValueError):
+                    # If file is invalid JSON or empty, consider it already cleared
+                    cache_has_content = False
+                
+                # Clear the file contents but don't delete it
+                with open(cache_file_path, 'w', encoding='utf-8') as f:
+                    json.dump({}, f, indent=2, ensure_ascii=False)
+                
+                # Update the cache in the translation engine if it's the current cache
+                if hasattr(self.root.translation_engine, 'cache_file') and self.root.translation_engine.cache_file == cache_file_path:
+                    self.root.translation_engine.cache = {}
+                    self.root.translation_engine.reverse_cache = {}
+                
+                # Update button state after clearing
+                self.update_clear_cache_button_state()
+                
+                # Show popup notification only if cache had content
+                if cache_has_content:
+                    self.root.custom_popup.add_popup(
+                        timeout=5000,
+                        prompt=[{"label_config":"text='Language Cache Cleared', background='#2780e3', anchor='center', font='Calibri 10 bold'", "grid_config":"sticky='nsew'"}], 
+                        grid_layout_config=[{"grid_row_config":"index=0, weight=1"}, {"grid_column_config":"index=0, weight=1"}]
+                    )
+            except Exception as e:
+                # Silently fail - the button should be disabled if there are no files anyway
+                pass
 
     def validate_node_fields(self, *args):
-        
         check_connection = False
         try:
             if args[1]:
@@ -698,14 +924,32 @@ class SettingsPage(BasePage):
         node_validation = not self.disable_node_validation_var.get()
         node_validation_changed = (str(node_validation) != current_config.get('node_validation', ''))
         
+        # Check translation module changes
+        current_translation_module = current_config.get('translation_module')
+        if self.argostranslate_checkbox.get():
+            new_translation_module = 'argostranslate'
+        elif self.deep_translator_checkbox.get():
+            new_translation_module = 'deep-translator'
+        else:
+            # Both are unchecked - translation is disabled
+            new_translation_module = None
+        
+        # Check if translation module changed
+        if new_translation_module is None:
+            # Translation is disabled - check if it was previously enabled
+            translation_module_changed = (current_translation_module is not None and current_translation_module != '')
+        else:
+            # Translation is enabled - check if it changed
+            translation_module_changed = (current_translation_module != new_translation_module)
+        
         # --- UPDATED: Final check for enabling save button ---
         if self.root.disable_exchange_rate_features:
             # Check for changes and ensure language is valid
-            settings_changed = self.language_valid and (node_changed or node_validation_changed or language_changed) and not self.keep_save_button_disabled
+            settings_changed = self.language_valid and (node_changed or node_validation_changed or language_changed or translation_module_changed) and not self.keep_save_button_disabled
         else:
             # Check for changes and ensure BOTH currency and language are valid
             settings_changed = (self.currency_code_valid and self.language_valid) and \
-                               (currency_code_changed or node_changed or node_validation_changed or language_changed) and \
+                               (currency_code_changed or node_changed or node_validation_changed or language_changed or translation_module_changed) and \
                                not self.keep_save_button_disabled
         # --------------------------------------------------------
         return settings_changed
@@ -722,7 +966,8 @@ class DenaroWalletGUI(tk.Tk):
         super().__init__()
         self.config_handler = ConfigHandler(self)
         self.language = self.config_handler.config_values.get('language', 'en')
-        self.translation_engine = universal_language_translator.activate_tkinter_translation(target_language=self.language, sensitive_patterns=sensitive_patterns, non_translatable_patterns=non_translatable_patterns)
+        translation_module = self.config_handler.config_values.get('translation_module', 'deep-translator')
+        self.translation_engine = universal_language_translator.activate_tkinter_translation(target_language=self.language, translation_module=translation_module, sensitive_patterns=sensitive_patterns, non_translatable_patterns=non_translatable_patterns)
 
         self.wallet_client_version = f"{wallet_client.wallet_client_version} GUI"
         self.title(self.wallet_client_version)
@@ -761,6 +1006,7 @@ class DenaroWalletGUI(tk.Tk):
         self.send_page = self.pages.get("Send")
         self.settings_page = self.pages.get("Settings")
         self.event_handler = EventHandler(self)
+        self.callbacks = Callbacks(self)
 
         self.translation_engine.event_handler = self.event_handler
         self.translation_engine.log.info("Event handler registered with translation engine.")
@@ -1081,6 +1327,31 @@ class ConfigHandler:
                 self.root.settings_page.language_combobox.set("English")
                 self.root.settings_page.validate_language()
             # --------------------------------------------
+            
+            # --- Handle Translation Module Setting on Load ---
+            self.root.settings_page._is_updating_translation_module = True
+            try:
+                translation_module = self.config_values.get('translation_module')
+                if translation_module in ('argostranslate', 'deep-translator'):
+                    # Translation is enabled - set the appropriate module
+                    self.root.settings_page._set_translation_module_state(translation_module)
+                    self.root.settings_page.language_combobox.config(state='normal')
+                else:
+                    # Translation is disabled (no translation_module or invalid value)
+                    self.root.settings_page._set_translation_module_state(None)
+                    self.root.settings_page.language_combobox.config(state='disabled')
+                    # Reset language to English when translation is disabled
+                    self.config_values['language'] = 'en'
+                    self.root.settings_page.language_combobox.set("English")
+                    self.root.settings_page.validate_language()
+                    # Update translation engine to English
+                    self.root.translation_engine.set_language('en')
+            finally:
+                self.root.settings_page._is_updating_translation_module = False
+            # --------------------------------------------
+            
+            # Update save button state after loading config to reflect current state
+            self.root.settings_page.update_save_button_state()
 
 
     def language_update_worker(self, stop_signal):
@@ -1088,7 +1359,38 @@ class ConfigHandler:
         This worker runs on a background thread so that the main GUI thread dose not
         get blocked. It shows the language update in realtime.
         """
+        # Get translation module from config (don't use default - if missing, translation is disabled)
+        translation_module = self.config_values.get('translation_module')
+        # Only update if translation module is set (translation is enabled)
+        if translation_module:
+            if self.root.translation_engine.translation_module != translation_module:
+                # Reinitialize translation engine with new module
+                self.root.translation_engine.translation_module = translation_module
+                self.root.translation_engine._initialize_backends()
+        
+        # Refresh translation module label before translation starts
+        # This ensures the label is visible during the translation process
+        def refresh_translation_module_label_before():
+            if self.root.settings_page.argostranslate_checkbox.get():
+                self.root.settings_page.update_translation_module_label('argostranslate')
+            elif self.root.settings_page.deep_translator_checkbox.get():
+                self.root.settings_page.update_translation_module_label('deep-translator')
+        self.root.after_idle(refresh_translation_module_label_before)
+        
         self.root.translation_engine.set_language(self.config_values['language'])
+        
+        # Update the language cache list on the GUI thread after language change
+        # This ensures new cache files are shown in the combobox
+        self.root.after_idle(self.root.settings_page.update_language_cache_list)
+        
+        # Refresh translation module label after translation completes
+        # This ensures the label doesn't disappear after translation
+        def refresh_translation_module_label_after():
+            if self.root.settings_page.argostranslate_checkbox.get():
+                self.root.settings_page.update_translation_module_label('argostranslate')
+            elif self.root.settings_page.deep_translator_checkbox.get():
+                self.root.settings_page.update_translation_module_label('deep-translator')
+        self.root.after_idle(refresh_translation_module_label_after)
     
     
     def save_node_config(self, node, node_validation_enabled):
@@ -1108,6 +1410,80 @@ class ConfigHandler:
         if not self.root.disable_exchange_rate_features:
             if self.config_values.get('default_currency') != self.root.stored_data.currency_code:
                 self.config_values['default_currency'] = self.root.stored_data.currency_code
+    
+    def save_translation_module_config(self):
+        """
+        Updates the self.config_values dictionary with translation module settings.
+        """
+        current_translation_module = self.config_values.get('translation_module')
+        
+        # Determine new translation module from checkbox states
+        if self.root.settings_page.argostranslate_checkbox.get():
+            new_translation_module = 'argostranslate'
+        elif self.root.settings_page.deep_translator_checkbox.get():
+            new_translation_module = 'deep-translator'
+        else:
+            # Both are unchecked - translation is disabled
+            new_translation_module = None
+        
+        # Check if translation module changed
+        if new_translation_module is None:
+            # Translation is disabled - check if it was previously enabled
+            translation_module_changed = (current_translation_module is not None and current_translation_module != '')
+        else:
+            # Translation is enabled - check if it changed from previous state
+            translation_module_changed = (current_translation_module != new_translation_module)
+        
+        # Validate argostranslate installation if it's being selected
+        if new_translation_module == 'argostranslate' and translation_module_changed:
+            try:
+                import argostranslate
+            except ImportError:
+                # Set flag BEFORE reverting to prevent change callback from firing
+                # This prevents the "Disable Translation" dialog from showing when we revert
+                self.root.settings_page._is_updating_translation_module = True
+                try:
+                    # Revert to previous setting - don't change the translation module
+                    if current_translation_module == 'argostranslate':
+                        self.root.settings_page._set_translation_module_state('argostranslate', update_prev_state=True)
+                    elif current_translation_module == 'deep-translator':
+                        self.root.settings_page._set_translation_module_state('deep-translator', update_prev_state=True)
+                    else:
+                        # No previous translation module - revert to deep-translator (default)
+                        self.root.settings_page._set_translation_module_state('deep-translator', update_prev_state=True)
+                finally:
+                    # Clear flag after reverting - the callback won't fire because state is back to original
+                    self.root.settings_page._is_updating_translation_module = False
+                
+                # Show dialog after reverting
+                self.root.dialogs.messagebox(
+                    "Argos Translate Not Installed",
+                    "Argos Translate is not installed. Please install it via pip:\n\n"
+                    "pip install argostranslate\n\n"
+                    "After installation, please restart the wallet client and set the translation module to Argos Translate."
+                )
+                
+                # Don't update config - keep the previous translation module
+                # Continue with save for other settings
+                return
+        
+        # Update translation module in config
+        if translation_module_changed:
+            if new_translation_module is None:
+                # Translation is disabled - remove the key from config
+                if 'translation_module' in self.config_values:
+                    del self.config_values['translation_module']
+                # Reset language to English when translation is disabled
+                self.config_values['language'] = 'en'
+                self.root.settings_page.language_combobox.set("English")
+                self.root.settings_page.validate_language()
+                # Update translation engine to English immediately
+                self.root.translation_engine.set_language('en')
+            else:
+                self.config_values['translation_module'] = new_translation_module
+                # Update translation module in engine if it changed
+                self.root.translation_engine.translation_module = new_translation_module
+                self.root.translation_engine._initialize_backends()
     
 
     def show_save_confirmation_popup(self, new_config):
@@ -1146,6 +1522,9 @@ class ConfigHandler:
         if not self.root.settings_page.check_setting_changes():
             return
         
+        # Save translation module configuration
+        self.save_translation_module_config()
+        
         # Language HAS changed. Dispatch to the background worker thread.
         if self.config_values.get('language') != self.root.settings_page.language:
             self.config_values['language'] = self.root.settings_page.language
@@ -1156,11 +1535,17 @@ class ConfigHandler:
         wallet_client.write_config(config=self.config_values)
         new_config = wallet_client.read_config(disable_err_msg=True)
     
+        # Update config_values to the newly read config
+        self.config_values = new_config
+    
         #  Safely queue the final UI feedback on the main GUI thread
         self.show_save_confirmation_popup(new_config)
 
         # Finally, for good measure update all config values 
         self.update_config_values()
+        
+        # Update save button state after config is reloaded
+        self.root.settings_page.update_save_button_state()
 
 
 
@@ -1648,7 +2033,7 @@ class GUIUtils:
                 if show_send_page:
                     self.root.show_page("Send")
                 if view_explorer:
-                    url = f"https://explorer.denaro.is/address/{item['values'][0]}"
+                    url = f"https://denaro-explorer.aldgram-solutions.fr/address/{item['values'][0]}"
                     self.open_link(url, show_link=True)
 
 
@@ -2313,7 +2698,7 @@ class WalletOperations:
         
                 if transaction:
                     transaction_hash = sha256(transaction.hex())
-                    hyperlink_url = f"http://explorer.denaro.is/transaction/{transaction_hash}"
+                    hyperlink_url = f"https://denaro-explorer.aldgram-solutions.fr/address/transaction/{transaction_hash}"
                     hyperlink_text = f"Denaro Explorer link: {hyperlink_url}"
                     tx_str = (f'\nTransaction successfully pushed to node. \n'
                                 f'Transaction hash: {transaction_hash}\n'
@@ -2385,7 +2770,7 @@ class WalletOperations:
         if result[0]:
             self.root.stored_data.wait_finished = True
             time.sleep(1)
-            if self.callbacks.post_confirmation_prompt(title="Wallet Created", msg="New wallet has been created. Would you like to open it?"):
+            if self.callbacks.post_confirmation_prompt(title="Wallet Created", msg="New wallet has been created.\nWould you like to open it?"):
                 self.load_wallet(file_path=result[1])
 
             #if deterministic:
@@ -2429,7 +2814,7 @@ class WalletOperations:
         if result[0]:
             self.root.stored_data.wait_finished = True
             time.sleep(1)
-            if self.callbacks.post_confirmation_prompt(title="Wallet Created", msg="New wallet has been created. Would you like to open it?"):
+            if self.callbacks.post_confirmation_prompt(title="Wallet Created", msg="New wallet has been created.\nWould you like to open it?"):
                 self.load_wallet(file_path=result[1])
 
 

@@ -139,7 +139,8 @@ class PopupHandler:
         if self.destruction_after_id:
             self.master.after_cancel(self.destruction_after_id)  # Cancel the scheduled destruction if it's being destroyed early
         self.frame.destroy()
-        self.adjust_callback()
+        if self.adjust_callback:
+            self.adjust_callback()
         self.on_destroy_callback(self)
 
     def update_position(self, x, y):
@@ -173,6 +174,7 @@ class CustomPopup:
     def __init__(self, root):
         self.root = root
         self.popups = []
+        self._adjusting = False  # Flag to prevent recursive calls
         self.root.bind('<Configure>', self.on_window_resize)
 
     def add_popup(self, timeout, prompt=None, grid_layout_config=None,):
@@ -196,15 +198,41 @@ class CustomPopup:
         self.adjust_popups_position()
 
     def adjust_popups_position(self):
-        start_x = self.root.winfo_width() - 249
-        valid_popups = []
-        for i, popup in enumerate(reversed(self.popups)):
-            new_y = self.root.winfo_height() - 130 - 100 * i
-            # Check if the popup would be out of the visible area
-            if new_y < -popup.height:
-                popup.destroy_popup()
-            else:
-                popup.update_position(start_x, new_y)
-                valid_popups.append(popup)
-        # Update the list of popups to exclude any that were destroyed
-        self.popups = list(reversed(valid_popups))
+        # Prevent recursive calls
+        if self._adjusting:
+            return
+        self._adjusting = True
+        try:
+            start_x = self.root.winfo_width() - 249
+            valid_popups = []
+            popups_to_destroy = []
+            
+            # First pass: identify popups that need to be destroyed
+            for i, popup in enumerate(reversed(self.popups)):
+                new_y = self.root.winfo_height() - 130 - 100 * i
+                # Check if the popup would be out of the visible area
+                if new_y < -popup.height:
+                    popups_to_destroy.append(popup)
+                else:
+                    popup.update_position(start_x, new_y)
+                    valid_popups.append(popup)
+            
+            # Remove popups from list before destroying to prevent recursion
+            for popup in popups_to_destroy:
+                if popup in self.popups:
+                    self.popups.remove(popup)
+            
+            # Destroy popups without triggering adjust_callback (since we're already adjusting)
+            for popup in popups_to_destroy:
+                # Temporarily set adjust_callback to None to prevent recursion
+                original_callback = popup.adjust_callback
+                popup.adjust_callback = None
+                try:
+                    popup.destroy_popup()
+                finally:
+                    popup.adjust_callback = original_callback
+            
+            # Update the list of popups to exclude any that were destroyed
+            self.popups = list(reversed(valid_popups))
+        finally:
+            self._adjusting = False

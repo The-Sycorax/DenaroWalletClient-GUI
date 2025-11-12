@@ -8,6 +8,7 @@ from math import ceil
 from datetime import datetime, timezone
 from typing import Union
 import os
+import re
 
 # Importing third-party libraries
 import base58
@@ -370,6 +371,26 @@ def is_valid_mnemonic(mnemonic_phrase):
 
 def generate_mnemonic():
     return mnemonic.Mnemonic("english").generate()
+
+def generate_bip39_mnemonic_pattern():
+    """
+    Generate a regex pattern that matches 6 to 24 words from the BIP39 word list.
+    This range covers all valid BIP39 mnemonic lengths (12, 15, 18, 21, 24 words)
+    and also catches partial or buggy mnemonics (6-11 words) that should still be
+    treated as sensitive data.
+    
+    Returns:
+        str: Regex pattern string that matches 6-24 BIP39 mnemonic words separated by spaces.
+    """
+    mnemo = mnemonic.Mnemonic("english")
+    # Escape special regex characters in words and join with alternation
+    escaped_words = [re.escape(word) for word in mnemo.wordlist]
+    word_pattern = '|'.join(escaped_words)
+    # Pattern: 6 to 24 words from BIP39 word list, separated by spaces
+    # Using word boundaries to ensure complete word matching
+    # {5,23} means 1 initial word + 5-23 additional words = 6-24 words total
+    pattern = rf'^\b({word_pattern})\b(\s+\b({word_pattern})\b){{5,23}}$'
+    return pattern
 
 def generate(mnemonic_phrase=None, passphrase=None, index=0, deterministic=False, fields=None, wallet_version=None):
     """

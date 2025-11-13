@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 env
+venv
 denaro/wallet/wallets
 wallets
 testing

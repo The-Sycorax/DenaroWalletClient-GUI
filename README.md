@@ -1,11 +1,10 @@
 # Denaro Wallet Client GUI
 
-## Introduction
 **This repo contains the source code for the Denaro Wallet Client, developed for the Denaro cryptocurrency. It has been designed with a strong emphasis on security, providing users with a secure and efficient way to manage their digital assets.** 
 
 **The wallet client provides essential functionalities such as wallet creation, address generation, transaction processing, balance checking, and wallet imports. Advanced functionalities are also provided, including encryption and decryption of wallet data, optional two-factor authentication (2FA), wallet entry filtering, support for deterministic wallets, and several security measures to protect wallet data *(See the [Wallet Security Framework](#wallet-security-framework) section for more details)*.**
 
-**Github repo for the Denaro cryptocurrency: https://github.com/denaro-coin/denaro**
+**Denaro Github Repository: https://github.com/The-Sycorax/denaro**
 
 ![screenshot](screenshot.png "GUI Screenshot")
 
@@ -21,19 +20,13 @@ cd DenaroWalletClient-GUI
 sudo apt update
 sudo apt install libgmp-dev
 
-# Setting Up a Python Virtual Environment (optional but recommended)
-# Install virtualenv with pip
-pip install virtualenv
-# Sometimes virtualenv requires the apt package to be installed
+# Create a Python virtual environment (Optional).
 sudo apt install python3-venv
-# Create the virtual environment
-python3 -m venv env
-# Activate the virtual environment. Should be executed every time that there is new terminal session.
-source env/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 
 # Install the required packages
 pip3 install -r requirements.txt
-
 
 # Run the wallet client GUI
 python3 gui.py
@@ -50,7 +43,6 @@ deactivate
 ------------
 
 ## Usage Documentation
-### Command-Line Interface:
 
 **The Denaro Wallet Client** provides a rebust CLI for various operations. This section provides detailed usage documentation for the various sub-commands along with their corresponding options.
 
@@ -66,7 +58,7 @@ deactivate
 
   This sub-command is used to generate wallets or overwrite existing ones. When a new wallet is created it will contain a single Denaro address. Addresses are generated based on wheather the wallet is `deterministic` or `non-deterministic`.
     
-  Wallets can also be encrypted and Two-Factor Authentication (2FA) can also be enables for better security. When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. See [In-Memory Processing and Zero-Disk Plaintext Policy](https://github.com/The-Sycorax/DenaroWalletClient-GUI?tab=readme-ov-file#in-memory-processing-and-zero-disk-plaintext-policy) for more details.
+  Wallets can also be encrypted and have Two-Factor Authentication (2FA) enabled for better security. When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. See [In-Memory Processing and Zero-Disk Plaintext Policy](https://github.com/The-Sycorax/DenaroWalletClient-GUI?tab=readme-ov-file#in-memory-processing-and-zero-disk-plaintext-policy) for more details.
 
   **Syntax**:
   
@@ -270,6 +262,21 @@ deactivate
 
   </dd></dl>
   </details>
+
+  <details>
+  <summary><b>Paper Wallet Design:</b></summary>
+  <dl><dd>
+  <dl><dd>
+  <dl><dd>
+
+  ![paper_wallet_front](denaro/wallet/paper_wallet_front.png "Paper Wallet Front")
+  ![paper_wallet_back](denaro/wallet/paper_wallet_back.png "Paper Wallet Back")
+
+  </dd></dl>
+  </dd></dl>
+  </dd></dl>
+  </details>
+
 
   </dd></dl>
   </details>
@@ -532,7 +539,7 @@ deactivate
   <summary><b><code>import</code>:</b></summary>
   <dl><dd>
 
-  This sub-command is used to import an Denaro address into a specified wallet file via it's private key.
+  This sub-command is used to import a Denaro address into a specified wallet file via it's private key.
 
   **Syntax**:
 
@@ -601,18 +608,10 @@ deactivate
 <dl><dd>
 
 <details>
-<summary><b>Creating Wallets:</b></summary>
+<summary><b>Generating Wallets:</b></summary>
 <dl><dd>
 
-<i>The wallet filename does not require a .json extension to be added as this is entirely optional. By default, the script will add the extension to the filename if not present.
-
-If the wallet file specified already exists then the user will be prompted with a warning and asked if they want to backup the wallet file. If the user chooses not to back up the wallet file, then they will be prompted with an additional warning and asked to confirm the overwrite of the wallet file.
-
-When overwriting an encrypted wallet, the password associated with the it is required, and the user will be prompted to type it in. The user can choose to bypass one or more of these prompts with the use of `-backup`, `-disable-overwrite-warning`, or `-overwrite-password` (Refer to [generate wallet](#generatewallet) options for details).</i>
-
-<details>
-  <summary><b>Examples:</b></summary>
-  <dl><dd>
+<i>The wallet filename does not require a .json extension to be added as this is entirely optional. By default, the script will add the extension to the filename if not present.</i>
 
   <details>
   <summary>Generates an un-encrypted non-deterministic wallet:</summary>
@@ -659,7 +658,7 @@ When overwriting an encrypted wallet, the password associated with the it is req
   </details>
     
   <details>
-  <summary>Creates a backup of an encrypted wallet, and overwrites it with a new un-encrypted wallet, while skipping prompts:</summary>
+  <summary>Creates a backup of an encrypted wallet, and overwrites it with a new wallet, while skipping prompts:</summary>
   <dl><dd>
 
   ```bash
@@ -668,10 +667,6 @@ When overwriting an encrypted wallet, the password associated with the it is req
 
   </dd></dl>
   </details>
-
-</dd></dl>
-</details>
-
 
 </dd></dl>
 </details>
@@ -990,101 +985,121 @@ When overwriting an encrypted wallet, the password associated with the it is req
 
 **Security is paramount to the underlying framework of the wallet client, with an extream emphasis on keeping encrypted wallets protected. To achieve this, the wallet client incorporates several defensive security mechanisms that work together to safeguard and fortify wallet data. These include dual-layer authenticated encryption with AES-GCM and ChaCha20-Poly1305, per-layer integrity verification, proof-of-work throttling of brute-force attempts, optional TOTP-based 2FA, double-hashed password verification, and automatic wallet deletion.**
 
-- **The security mechanisms are detailed below:**
+**The security mechanisms are detailed below:**
+  
+  <dl><dd>
+  <dl><dd>
+  <details>
+  <summary><b>Dual-Layer Authenticated Encryption:</b></summary>
+  <dl><dd>
     
-    <details>
-    <summary><b>Dual-Layer Authenticated Encryption:</b></summary>
-    <dl><dd>
+  - When encryption is enabled, the wallet client deeply inegrates and bakes it's security measures directly into the cryptographic operations that are responsible for protecting wallet data. 
     
-    - When encryption is enabled, the wallet client deeply inegrates and bakes it's security measures directly into the cryptographic operations that are responsible for protecting wallet data. 
+  - At it's core is a unique dual-layer technique that combines both the AES-GCM and ChaCha20-Poly1305 encryption algorithms. Individual JSON key-value pairs are first encrypted with this dual-layer method; the resulting entries are then encrypted again as part of the complete JSON structure. 
     
-    - At it's core is a unique dual-layer technique that combines both the AES-GCM and ChaCha20-Poly1305 encryption algorithms. Individual JSON key-value pairs are first encrypted with this dual-layer method; the resulting entries are then encrypted again as part of the complete JSON structure. 
-    
-    - By incorporating this multi-layered approach, the wallet client provides independent boundaries of confidentiality and integrity, substantially strengthening the resilience of cryptographic keys against a wide range of threats.
+  - By incorporating this multi-layered approach, the wallet client provides independent boundaries of confidentiality and integrity, substantially strengthening the resilience of cryptographic keys against a wide range of threats.
         
-    </dl></dd>
-    </details>
+  </dl></dd>
+  </details>
+  </dl></dd>
+  </dl></dd>
 
-    <details>
-    <summary id="in-memory-processing-and-zero-disk-plaintext-policy"><b>In-Memory Processing and Zero-Disk Plaintext Policy:</b></summary>
-    <dl><dd>
-    
-    - When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. Fields such as entries, verifiers, salts, and secrets are ciphertext and can only be decrypted at runtime when a valid password is provided. 
-    
-    - During wallet operations sensitive plaintext data exist only in process memory, and are never written to disk. The only exception to this is when encryption is explicitly disabled, in which case plaintext wallet data may be stored unencrypted by user intent. 
-    
-    - Additionally the memory footprint of sensitive data are wiped as soon as they are no longer needed (See the <a href="#proactive-memory-sanitization">Proactive Memory Sanitization</a> section below).
-    
-    </dl></dd>
-    </details>
-    
-    <details>
-    <summary id="proactive-memory-sanitization"><b>Proactive Memory Sanitization:</b></summary>
 
-    <dl><dd>
+  <dl><dd>
+  <dl><dd>
+  <details>
+  <summary id="in-memory-processing-and-zero-disk-plaintext-policy"><b>In-Memory Processing and Zero-Disk Plaintext Policy:</b></summary>
+  <dl><dd>
     
-    - The wallet client adheres to the principle of least privilege in memory, ensuring sensitive data exists for the shortest possible duration. To enforce this, at nearly every function handoff and exit point, the wallet client performs a best-effort secure deletion routine. This routine defensively wipes the memory footprint of potentally sensitive data as soon as they are no longer needed. 
+  - When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. Fields such as entries, verifiers, salts, and secrets are ciphertext and can only be decrypted at runtime when a valid password is provided. 
+    
+  - During wallet operations sensitive plaintext data exist only in process memory, and are never written to disk. The only exception to this is when encryption is explicitly disabled, in which case plaintext wallet data may be stored unencrypted by user intent. 
+    
+  - Additionally the memory footprint of sensitive data are wiped as soon as they are no longer needed (See the <a href="#proactive-memory-sanitization">Proactive Memory Sanitization</a> section below).
+    
+  </dl></dd>
+  </details>
+  </dl></dd>
+  </dl></dd>
+  
+  <dl><dd>
+  <dl><dd>
+  <details>
+  <summary id="proactive-memory-sanitization"><b>Proactive Memory Sanitization:</b></summary>
+  <dl><dd>
+    
+  - The wallet client adheres to the principle of least privilege in memory, ensuring sensitive data exists for the shortest possible duration. To enforce this, at nearly every function handoff and exit point, the wallet client performs a best-effort secure deletion routine. This routine defensively wipes the memory footprint of potentally sensitive data as soon as they are no longer needed. 
         
-    - This ensures that sensitive data is not left lingering in memory after runtime. Minimizing the risk of data being exposed through memory dumps or other runtime analysis attacks. The only exception to this is data intentionally presented to the user via console output, which cannot be wiped once displayed.
+  - This ensures that sensitive data is not left lingering in memory after runtime. Minimizing the risk of data being exposed through memory dumps or other runtime analysis attacks. The only exception to this is data intentionally presented to the user via console output, which cannot be wiped once displayed.
     
-    </dl></dd>
-    </details>
-
-    <details>
-    <summary><b>Tracking Failed Password Attempts:</b></summary>
-    <dl><dd>
+  </dl></dd>
+  </details>
+  </dl></dd>
+  </dl></dd>
+  
+  <dl><dd>
+  <dl><dd>
+  <details>
+  <summary><b>Tracking Failed Password Attempts:</b></summary>
+  <dl><dd>
     
-    - The wallet client incorperates a security measure to identify and record failed password attempts on encrypted wallets without directly storing an insecure plaintext counter. Instead, the number of failed attempts is stored by using a deterministic and reversible scrambling transformation of the encrypted data, using the counter itself as the seed for the transformation.
+  - The wallet client incorperates a security measure to identify and record failed password attempts on encrypted wallets without directly storing an insecure plaintext counter. Instead, the number of failed attempts is stored by using a deterministic and reversible scrambling transformation of the encrypted data, using the counter itself as the seed for the transformation.
         
-    - To determine failed password attempts, the wallet client iteratively tries to descramble the encrypted data using seeds 0 through 9. After each attempt, it validates the data's integrity via an HMAC check. The first seed that results in a valid HMAC reveals the correct number of failed attempts.
+  - To determine failed password attempts, the wallet client iteratively tries to descramble the encrypted data using seeds 0 through 9. After each attempt, it validates the data's integrity via an HMAC check. The first seed that results in a valid HMAC reveals the correct number of failed attempts.
     
-    - If the provided password fails to decrypt the data, the wallet client recovers the current count, increments it by one, and re-applies the scrambling transformation with the new count as the seed to persist the new state. 
+  - If the provided password fails to decrypt the data, the wallet client recovers the current count, increments it by one, and re-applies the scrambling transformation with the new count as the seed to persist the new state. 
         
-    - If the provided password is correct, the failed attempt count is reset to zero. The wallet client then re-scrambles the data using 0 as the seed, clearing the record of any previous failed attempts.
+  - If the provided password is correct, the failed attempt count is reset to zero. The wallet client then re-scrambles the data using 0 as the seed, clearing the record of any previous failed attempts.
     
-    - This security measure prevents direct tampering of the count by a malicious attacker but can still be reversed with technical skill.
+  - This security measure prevents direct tampering of the count by a malicious attacker but can still be reversed with technical skill.
     
-    </dl></dd>
-    </details>
+  </dl></dd>
+  </details>
+  </dl></dd>
+  </dl></dd>
 
-    <details>
-    <summary id="wallet-annihilation"><b>Wallet Annihilation:</b></summary>
-    <dl><dd>
+  <dl><dd>
+  <dl><dd>
+  <details>
+  <summary id="wallet-annihilation"><b>Wallet Annihilation:</b></summary>
+  <dl><dd>
     
-    - As a final safeguard against persistent brute-force attacks, the wallet client incorporates a comprehensive **"Wallet Annihilation"** feature. This feature is automatically triggered after **10 consecutive failed password attempts** or when a wallet file is intentionally overwritten,  initiating a "*potential*" irreversible deletion of wallet data. 
+  - As a final safeguard against persistent brute-force attacks, the wallet client incorporates a comprehensive **"Wallet Annihilation"** feature. This feature is automatically triggered after **10 consecutive failed password attempts** or when a wallet file is intentionally overwritten,  initiating a "*potential*" irreversible deletion of wallet data. 
     
-    - It is important to note that this feature dose not ensure absolute irreversible deletion (See the <a href="#assumption-of-irreversible-deletion">Assumption of Irreversible Deletion</a> section below).
+  - It is important to note that this feature dose not ensure absolute irreversible deletion (See the <a href="#assumption-of-irreversible-deletion">Assumption of Irreversible Deletion</a> section below).
     
-    - Wallet Annihilation is designed to impede the feasibility of forensic wallet data recovery and consists of several distinct routines:
-        - Before any wiping occurs, the wallet data is encrypted. The cryptographic keys for this routine are generated from random, high-entropy SHA3-512 hashes that are immediately discarded from system memory. This ensures that even if the raw bits could be recovered from the physical storage medium, they would represent nothing more than useless, randomly scrambled ciphertext.
+  - Wallet Annihilation is designed to impede the feasibility of forensic wallet data recovery and consists of several distinct routines:
+      - Before any wiping occurs, the wallet data is encrypted. The cryptographic keys for this routine are generated from random, high-entropy SHA3-512 hashes that are immediately discarded from system memory. This ensures that even if the raw bits could be recovered from the physical storage medium, they would represent nothing more than useless, randomly scrambled ciphertext.
     
-        - Following the encryption, the wallet client executes a comprehensive, multi-pass data sanitization routine directly on the wallet file. This routine sequentially applies three industry-recognized data destruction standards to ensure thorough data erasure:        
-            - **DoD 5220.22-M**: Overwrites the data with specific patterns of zeros, ones, and random characters across multiple passes.            
+      - Following the encryption, the wallet client executes a comprehensive, multi-pass data sanitization routine directly on the wallet file. This routine sequentially applies three industry-recognized data destruction standards to ensure thorough data erasure:        
+          - **DoD 5220.22-M**: Overwrites the data with specific patterns of zeros, ones, and random characters across multiple passes.            
+
+          - **Schneier Method**: A seven-pass method that further overwrites the data with fixed and random patterns.            
+
+          - **Gutmann Method**: The most extensive of the three, performing 35 passes with a wide array of patterns designed to counter data remanence.
     
-            - **Schneier Method**: A seven-pass method that further overwrites the data with fixed and random patterns.            
-    
-            - **Gutmann Method**: The most extensive of the three, performing 35 passes with a wide array of patterns designed to counter data remanence.
-    
-        - Finally the file that once held wallet data is truncated to zero bytes and then deleted from the filesystem.
+      - Finally the file that once held wallet data is truncated to zero bytes and then deleted from the filesystem.
         
-    - This multi-stage Wallet Annihilation protocol provides a comprehensive response to potential security breaches and provides a last line of defense against persistent intrusion attempts. It ensures that a wallet's contents are not just deleted, but "annihilated" (*potentially*). 
+  - This multi-stage Wallet Annihilation protocol provides a comprehensive response to potential security breaches and provides a last line of defense against persistent intrusion attempts. It ensures that a wallet's contents are not just deleted, but "annihilated" (*potentially*). 
     
-    <details>
-    <summary id="assumption-of-irreversible-deletion"><b>Assumption of Irreversible Deletion:</b></summary>
-    <dl><dd>
+  <details>
+  <summary id="assumption-of-irreversible-deletion"><b>Assumption of Irreversible Deletion:</b></summary>
+  <dl><dd>
 
-    - The "Wallet Annihilation" feature is engineered to make the recovery of deleted wallet data extreamly challenging, but it is important to recognize that in the field of digital data security, an absolute guarantee of irreversible deletion is not always possible. Therefore it cannot be gauranteed or assumed that data is 100% irrecoverable.
+  - The "Wallet Annihilation" feature is engineered to make the recovery of deleted wallet data extreamly challenging, but it is important to recognize that in the field of digital data security, an absolute guarantee of irreversible deletion is not always possible. Therefore it cannot be gauranteed or assumed that data is 100% irrecoverable.
 
-   - There are advanced techniques such as memory or cache analysis, and the use of certain text editors or specialized analysis software, that might, under specific conditions, be able to retrieve or restore parts of the deleted data.
+  - There are advanced techniques such as memory or cache analysis, and the use of certain text editors or specialized analysis software, that might, under specific conditions, be able to retrieve or restore parts of the deleted data.
 
-   - While these enhancements significantly increase the difficulty of unauthorized data recovery, they are predicated on the understanding that complete irreversibility in digital data erasure cannot be unequivocally assured.
+  - While these enhancements significantly increase the difficulty of unauthorized data recovery, they are predicated on the understanding that complete irreversibility in digital data erasure cannot be unequivocally assured.
     
-    </dl></dd>
-    </details>
+  </dl></dd>
+  </details>
 
     
-    </dl></dd>
-    </details>
+  </dl></dd>
+  </details>
+  </dl></dd>
+  </dl></dd>
 
 
 ------------

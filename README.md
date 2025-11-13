@@ -50,522 +50,939 @@ deactivate
 ------------
 
 ## Usage Documentation
-- ### Command-Line Interface:
+### Command-Line Interface:
 
-    **Overview**: The Denaro Wallet Client provides a rebust CLI for various operations. This section provides detailed usage documentation for the various sub-commands along with their corresponding options. 
+**The Denaro Wallet Client** provides a rebust CLI for various operations. This section provides detailed usage documentation for the various sub-commands along with their corresponding options.
+
+**Important: *When working with encrypted wallets, the password used to decrypt it must always be supplied via the `-password` option. Additionally, to ensure a high level of security, the wallet client has been designed with an auto-delete feature for encrypted wallets. After 10 unsuccessful password attempts, the wallet will be automatically deleted in order to protect its contents and safeguard against unauthorized access. See [Wallet Annihilation](#wallet-annihilation) for more deatils.***
+
+<details>
+<summary><b>Sub-Commands:</b></summary>
+<dl><dd>
+
+  <details>
+  <summary><b><code>generate wallet</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to generate wallets or overwrite existing ones. When a new wallet is created it will contain a single Denaro address. Addresses are generated based on wheather the wallet is `deterministic` or `non-deterministic`.
     
-    *Note: To ensure a high level of security, this wallet client is designed with an auto-delete feature for encrypted wallets. After 10 unsuccessful password attempts, the wallet will be automatically deleted in order to protect its contents and safeguard against unauthorized access. (For more details, please refer to: [Wallet Annihilation](#wallet-annihilation))*    
+  Wallets can also be encrypted and Two-Factor Authentication (2FA) can also be enables for better security. When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. See [In-Memory Processing and Zero-Disk Plaintext Policy](https://github.com/The-Sycorax/DenaroWalletClient-GUI?tab=readme-ov-file#in-memory-processing-and-zero-disk-plaintext-policy) for more details.
+
+  **Syntax**:
+  
+  <dl><dd>
+
+  ```bash
+  wallet_client.py generate wallet [-h] [-verbose] -wallet WALLET [-encrypt] [-2fa] [-deterministic] [-phrase PHRASE] [-password PASSWORD] [-backup {False,True}] [-disable-overwrite-warning] [-overwrite-password OVERWRITE_PASSWORD]
+  ```
+  
+  </dd><dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet` (Required): The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+  * `-encrypt`: Enables wallet encryption.
+  
+  * `-2fa`: Enables 2-Factor Authentication for encrypted wallets.
+  
+  * `-deterministic`: Enables deterministic address generation.
+  
+  * `-phrase`: Generates a wallet based on a 12 word mnemonic phrase. The mnemonic phrase must also be enclosed in quotation marks. This option can be used to restore deterministic wallets.
+  
+  * `-password`: The password for encrypting the wallet.
+  
+  * `-backup`: When attempting to overwrite an existing wallet, the user is typically shown a prompt asking if they want to backup the wallet. This option skips this prompt, and requires either a `True` or `False` parameter which specifies whether the wallet should be backed up.
+  
+  * `-disable-overwrite-warning`: If an existing wallet is not backed up, an overwrite warning is typically shown in the console, along with a prompt asking the user if they want to proceed. This option skips this prompt entirely.
+  
+  * `-overwrite-password`: When attempting to overwrite an encrypted wallet, the password for it is required as a final confirmation of the overwrite. The user is typically prompted to type this in the console. This option skips this entirely, and requires the password of the encrypted wallet as a parameter. If the password is correct, the overwrite will proceed.
+  
+  * `-verbose`: Enables verbose logging of info and debug messages.
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b>Wallet JSON Format:</b></summary>
+  <dl><dd>
+
+  Wallet data is structured in JSON format when it is either decrypted or left un-encrypted. The primary difference between wallet types lies in the `entry_data` object array, specifically regarding the type of address generation used by the wallet (`deterministic` or `non-deterministic`).
+
+  <details>
+  <summary><b>Non-Deterministic Wallet Format:</b></summary>
+  <dl><dd>
+
+  In a non-deterministic wallet, each generated entry has its own unique mnemonic phrase.
+
+  ```json
+  {
+    "wallet_data": {
+      "wallet_type": "non-deterministic",
+      "version": "<version-string>",
+      "entry_data": {
+        "entries": [
+          {
+            "id": "<int-string>",
+            "mnemonic": "<string>",
+            "private_key": "<string>",
+            "public_key": "<string>",
+            "address": "<string>"
+          }
+        ],
+        "imported_entries": [
+          {
+            "id": "<int-string>",
+            "private_key": "<string>",
+            "public_key": "<string>",
+            "address": "<string>"
+          }
+        ]
+      }
+    }
+  }
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b>Deterministic Wallet Format:</b></summary>
+  <dl><dd>
+
+  In a deterministic wallet, all generated entries are derived from a single `master_mnemonic`. Individual entries do not have their own mnemonic phrases.
+
+  ```json
+  {
+    "wallet_data": {
+      "wallet_type": "deterministic",
+      "version": "<version-string>",
+      "entry_data": {
+        "master_mnemonic": "<string>",
+        "entries": [
+          {
+            "id": "<int-string>",
+            "private_key": "<string>",
+            "public_key": "<string>",
+            "address": "<string>"
+          }
+        ],
+        "imported_entries": [
+          {
+            "id": "<int-string>",
+            "private_key": "<string>",
+            "public_key": "<string>",
+            "address": "<string>"
+          }
+        ]
+      }
+    }
+  }
+  ```
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>generate address</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to generate new addresses and add them to a wallet. For encrypted wallets, only the cryptographic keys of addresses are added. These are later used during decryption to derive the data associated with them (e.g. private_key, public_key, and address).
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py generate address [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-amount AMOUNT]
+  ```
+  
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet` (Required): The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+  * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+  * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+  * `-amount`: Specifies the amount of addresses to generate (Maximum of 256).
+  
+  * `-verbose`: Enables verbose logging of info and debug messages.
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>generate paperwallet</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to generate a Denaro paper wallet either by using an address that is associated with a wallet file, or directly via the private key of a Denaro address.
+
+  * *If specifying an address stored in a wallet file, the generated paper wallet will be stored in `./wallets/paper_wallet/[walletName]/`.*
+  
+  * *If specifying the private key of an address, the generated paper wallet will be stored in `./wallets/paper_wallets/`.*
+  
+  * *All generated paper wallets inherit the name of it's associated address.*
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py generate paperwallet [-h] [-verbose] [-wallet WALLET] [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-private-key PRIVATE_KEY] [-type {pdf,png}]
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet`: The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+  * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+  * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+  * `-address`: A Denaro address that is stored in the wallet. A paper wallet will be generated for this Denaro address.
+  
+  * `-private-key`: The private key of a Denaro address. This is not required if specifying an address from a wallet.
+  
+  * `-type`: Specifies the file type for the paper wallet. The default filetype is PDF.
+    * `-type png` generates a PNG image of the front of the paper wallet.
     
-    - ### Sub-Commands:   
-        <details>
-        <summary>Expand</summary>
-        <dl><dd>
-        
-        #### `generate wallet`
-        **Overview**: The `generate wallet` sub-command is used to generate new wallet files or overwrite existing ones. It will also generate an address for the wallet.
-                
-        <details>
-        <summary>Usage:</summary>
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py generate wallet [-h] [-verbose] -wallet WALLET [-encrypt] [-2fa] [-deterministic] [-phrase PHRASE] [-password PASSWORD] [-backup {False,True}] [-disable-overwrite-warning] [-overwrite-password OVERWRITE_PASSWORD]
-            ```
-        
-        - **Options**:    
-            
-            *Note: The `-password` option must be set for encrypted and/or deterministic wallets.*
-        
-            * `-wallet`: (Required) Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.  
-            * `-encrypt`: Enables encryption for new wallets.  
-            * `-2fa`: Enables 2-Factor Authentication for new encrypted wallets.    
-            * `-deterministic`: Enables deterministic address generation for new wallets.
-            * `-phrase`: Generates a wallet based on a 12 word mnemonic phrase provdided by the user. This option enables deterministic address generation, therefore password is required. The mnemonic phrase must also be enclosed in quotation marks.
-            * `-password`: Password used for wallet encryption and/or deterministic address generation. 
-            * `-backup`: Disables wallet backup warning when attempting to overwrite an existing wallet. A 'True' or 'False' parameter is required, and will specify if the wallet should be backed up or not.  
-            * `-disable-overwrite-warning`: Disables overwrite warning if an existing wallet is not backed up.  
-            * `-overwrite-password`: Used to bypass the password confirmation prompt when overwriteing a wallet that is encrypted. A string paramter is required, and should specify the password used for the encrypted wallet.
-            
-            * `-verbose`: Enables verbose logging of info and debug messages.
-        
-        </dd></dl>
-        </details>
-        
-        ---
-        
-        #### `generate address`
-        **Overview**: The `generate address` sub-command is used to generate new addresses and add them to wallet entry data. For encrypted wallets only the cryptographic keys for addresses are added, which are later used during decryption to derive the data associated with them (e.g. private_key, public_key, and address).
+    * `-type pdf` generates a PDF file of the front and back of the paper wallet.
 
-        <details>
-        <summary>Usage:</summary>
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py generate address [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-amount AMOUNT]
-            ```
-        
-        - **Options**:
-            
-            *Note: The `-password` option must be set for encrypted and/or deterministic wallets.*
-        
-            * `-wallet`: (Required) Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.
-            * `-password`: The password of the specified wallet. Required for encrypted and/or deterministic wallets.  
-            * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
-            * `-amount`: Specifies the amount of addresses to generate (Maximum of 256).
-            
-            * `-verbose`: Enables verbose logging of info and debug messages.
-        
-        </dd></dl>
-        </details>
+  </dd></dl>
+  </details>
 
-        ---
-        
-        #### `generate paperwallet`
-        **Overview**: The `generate paperwallet` sub-command is used to generate a Denaro paper wallet either by using an address that is associated with a wallet file, or directly via a private key that corresponds to a particular address.
-             
-        * *If specifying an address that is associated with a wallet file then the generated paper wallet will be stored in `./wallets/paper_wallet/[walletName]/`.*             
-        * *If specifying a private key that corresponds to a particular address then the generated paper wallet will be stored in `./wallets/paper_wallets/`.* 
-        
-        * *All generated paper wallets inherit the name of it's associated address.*
+  </dd></dl>
+  </details>
 
-        <details>
-        <summary>Usage:</summary>
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py generate paperwallet [-h] [-verbose] [-wallet WALLET] [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-private-key PRIVATE_KEY] [-type {pdf,png}]
-            ```
-        
-        - **Options**:
-            
-            *Note: The `-password` option must be set for encrypted and/or deterministic wallets.*
-        
-            * `-wallet`: Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.
-            * `-password`: The password of the specified wallet. Required for wallets that are encrypted.  
-            * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
-            * `-address`: Specifies a Denaro address associated with the wallet file. A paper wallet will be generated for this Denaro address.
-            * `-private-key`: Specifies the private key associated with a Denaro address. Not required if specifying an address from a wallet file.
-             
-             * `-type`: Specifies the file type for the paper wallet. The default filetype is PDF.                 
-                * `-type png` generates a PNG image of the front of the paper wallet. 
-                * `-type pdf` generates a PDF file of the front and back of the paper wallet.          
-        
-        </dd></dl>
-        </details>
+  <details>
+  <summary><b><code>decryptwallet</code>:</b></summary>
+  <dl><dd>
 
-        ---
+  This sub-command can either decrypt all entries in a wallet file, or selectivly decrypt specific entries based on a provided filter, and return the decrypted data back to the console.
 
-        #### `decryptwallet`
-        **Overview**: The `decryptwallet` sub-command can either decrypt all entries in a wallet file, or selectivly decrypt specific entries based on a provided filter, and return the decrypted data back to the console.        
-        
-        *Note: An encrypted wallet is not required to use this sub-command. Therefore, it has been designed to also return data from wallets that are not encrypted.*
+  This sub-command was initially designed to only return data for encrypted wallets, but has since been re-factored to also return data for un-encrypted wallets.
 
-        <details>
-        <summary>Usage:</summary>  
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py decryptwallet [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-json] {filter} ...
-            ```
-        
-        - **Options**:
-            *Note: The `-password` option must be set for encrypted wallets.*
-            
-            * `-wallet`: (Required) Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.
-            * `-password`: The password of the specified wallet. Required for wallets that are encrypted.
-            * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.            
-            * `-json`: Print formatted JSON output for better readability.
-        
-        </dd></dl>
-        </details>
-        
-        ---
-        
-        #### `decryptwallet filter`
-        **Overview**: The `decryptwallet filter` sub-command filters wallet entries by one or more addresses and/or fields. Adding a hyphen `-` to the beginning of an address will exclude it from the results. Wallet entries can also be filtered based on origin (See `-show` option for more details). This sub-command should come directly after the other options that have been provided for `decryptwallet`. 
-        
-        <details>
-        <summary>Usage:</summary> 
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py decryptwallet <options> filter [-h] [-verbose] [-address ADDRESS] [-field FIELD] [-show {generated,imported}]
-            ```
-        
-        - **Options**:
-            * `-address`: One or more addresses to filter by. Adding a hyphen `-` to the beginning of an address will exclude it from the output. 
-                * The format is: 
-                    ```bash
-                    fliter -address=ADDRESS_1,-ADDRESS_2,...
-                    ```  
-            * `-field`: One or more fields to filter by. 
-                * The format is: 
-                    ```bash
-                    -field=id,mnemonic,private_key,public_key,address
-                    ```
-            * `-show`: Filters wallet entries origin. 
-                * `-show generated` retrieves only the information of internally generated wallet entries. 
-                * `-show imported` retrieves only the information of imported wallet entries.
+  **Syntax**:
 
-        </dd></dl>
-        </details>
+  <dl><dd>
 
-        ---
-        
-        #### `send`
-        **Overview**: The `send` sub-command is used to initiate a transaction on the Denaro blockchain. This sub-command allows users to send Denaro to a specified address. 
-        
-        *Note: The source of funds for the transaction (the sender) can be specified in two ways: either by using an address that is associated with a wallet file, or directly via a private key that corresponds to a particular address.*
+  ```bash
+  wallet_client.py decryptwallet [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-json] {filter} ...
+  ```
 
-        <details>
-        <summary>Usage:</summary>         
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py send [-h] [-verbose] [-node NODE] -amount <AMOUNT> from [-wallet WALLET] [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-private-key PRIVATE_KEY] to <receiver> [-message MESSAGE]
-            ```
-        
-        - **Options**:
-            * `send`: Main command to initiate a transaction.
-                * `-amount`: (Required) Specifies the amount of Denaro to be sent.
-        
-            * `from <options>`: Specifies the sender's details.
-                * `-wallet`: Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.
-                * `-password`: The password of the specified wallet. Required for wallets that are encrypted.
-                * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
-                * `-address`: The Denaro address to send from. The address must be associated with the specified wallet.                
-                * `-private-key`: Specifies the private key associated with a Denaro address. Not required if specifying an address from a wallet file.    
-            
-            * `to <options>`: Specifies the receiver's details.
-                * `receiver`: (Required) The receiving address.            
-                
-                * `-message`: Optional transaction message.
-        
-            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
-        
-        </dd></dl>
-        </details>
+  </dd></dl>
 
-        ---
-        
-        #### `balance`
-        **Overview**: The `balance` sub-command is used to check the balance of addresses on the Denaro blockchain that are asociated with a specified wallet file. 
-        
-        *Note: Similar to `decryptwallet filter`, the `balance` sub-command can also filter wallet entries. The `-address` option can be used to filter one or more addresses that are associated with a wallet. Addresses can be excluded by adding a hyphen (`-`) to the beginning of it. Wallet entries can also be filtered based on origin (See `-show` option for more details).*
-        
-        <details>
-        <summary>Usage:</summary> 
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py balance [-h] [-verbose] [-node NODE] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-convert-to CURRENCY_CODE] [-show {generated,imported}] [-json] [-to-file]
-            ```
-        
-        - **Options**:
-            * `-wallet`: (Required) Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.
-            * `-password`: The password of the specified wallet. Required for wallets that are encrypted.
-            * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
-            * `-address`: Specifies one or more addresses to get the balance of. Adding a hyphen `-` to the beginning of an address will exclude it.
-                * The format is: 
-                    ```bash
-                    -address=ADDRESS_1,-ADDRESS_2,...
-                    ```
-            * `-convert-to`: Converts the monetary value of balances to a user specified currency, factoring in current exchange rates against the USD value of DNR. Supports 161 international currencies and major cryptocurrencies. A valid currency code is required (e.g., 'USD', 'EUR', 'GBP', 'BTC'). By default balance values are calculated in USD.
-             * `-show`: Filters balance information based on wallet entry origin. 
-                * `-show generated` retrieves only the balance information of internally generated wallet entries.
-                * `-show imported` retrieves only the balance information of imported wallet entries.
-            * `-json`: Prints the balance information in JSON format.
-            * `-to-file`: Saves the output of the balance information to a file. The resulting file will be in JSON format and named as "*[WalletName]​_balance_[Timestamp].json*" and will be stored in "*/[WalletDirectory]/balance_information/[WalletName]/*".    
-           
-            * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
-        
-        </dd></dl>
-        </details>
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
 
-        ---
-        
-        #### `import`
-        **Overview**: The `import` sub-command is used to import a wallet entry into a specified wallet file using the private key of a Denaro address.
+  * `-wallet` (Required): The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+  * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+  * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+  * `-json`: Print formatted JSON output for better readability.
 
-        <details>
-        <summary>Usage:</summary> 
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py import [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] -private-key PRIVATE_KEY
-            ```
-        
-        - **Options**:
-            * `-wallet`: (Required) Specifies the filename of the wallet file where the imported entries will be added. Defaults to the `./wallets/` directory if no specific filepath is provided.    
-            * `-password`: The password of the specified wallet. Required for wallets that are encrypted.    
-            * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
-            
-            * `-private-key`: Specifies the private key of a Denaro address. Used to generate the corresponding entry data which will be imported into a wallet file.
-            
-        </dd></dl>
-        </details>
+  </dd></dl>
+  </details>
 
-        ---
+  </dd></dl>
+  </details>
 
-        #### `backupwallet`
-        **Overview**: The `backup` sub-command is used to create a backup of a wallet file. An option to choose the backup directory is available.
+  <details>
+  <summary><b><code>decryptwallet filter</code>:</b></summary>
+  <dl><dd>
 
-        <details>
-        <summary>Usage:</summary> 
-        <dl><dd>
-        
-        - **Syntax**:
-            ```bash
-            wallet_client.py backupwallet [-h] -wallet WALLET [-path PATH]
-            ```
-        
-        - **Options**:
-            * `-wallet`: (Required) Specifies the filename of the wallet file where the imported entries will be added. Defaults to the `./wallets/` directory if no specific filepath is provided.    
-            
-            * `-path`: Specifies the directory to save the wallet backup file. Defaults to the `./wallets/wallet_backups/` directory if no specific filepath is provided.    
-            
-        </dd></dl>
-        </details>
-        </dd></dl>
-        </details>        
+  This sub-command filters wallet entries by one or more addresses and/or fields. Adding a hyphen `-` to the beginning of an address will exclude it from the results. Wallet entries can also be filtered based on origin (See `-show` option for more details). This sub-command should come directly after the other options that have been provided for `decryptwallet`.
 
-- ### Usage Examples:
-    <details>
-    <summary>Expand</summary>
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py decryptwallet <options> filter [-h] [-verbose] [-address ADDRESS] [-field FIELD] [-show {generated,imported}]
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-address`: Filters one or more addresses that are stored in the wallet. Adding a hyphen `-` to the beginning of an address will exclude it from the output.
+    * The format is:
+
+    <dl><dd>
+    <dl><dd>
+    <dl><dd>
+
+    ```bash
+    fliter -address=ADDRESS_1,-ADDRESS_2,...
+    ```
+
+    </dd></dl>
+    </dd></dl>
+    </dd></dl>
+  
+  * `-field`: One or more fields to filter by.
+    * The format is:
+
+    <dl><dd>
+    <dl><dd>
+    <dl><dd>
+
+    ```bash
+    -field=id,mnemonic,private_key,public_key,address
+    ```
     
-    - ### Generating New Wallets:
-        <details>
-        <summary>Expand</summary>
-        <dl><dd>
-        <i>Note: The wallet filename does not require a .json extension to be added as this is entirely optional. By default, the script will add the extension to the filename if not present.</i>
-        </dd><dd>
-        
-        *If the specified wallet file already exists then the user will be prompted with a warning and asked if they want to backup the existing wallet. If the user chooses not to back up an existing wallet, then they will be prompted with an additional warning and asked to confirm the overwrite of the existing wallet. When overwriting an encrypted wallet, the password associated with the it is required, and the user will be prompted to type it in. The user can choose to bypass one or more of these prompts with the use of `-backup`, `-disable-overwrite-warning`, or `-overwrite-password` (Refer to [generate wallet](#generatewallet) options for details).*
-        
-        
-        
-        * Generates an un-encrypted, non-deterministic wallet:
-            ```bash
-            python3 wallet_client.py generate wallet -wallet=wallet.json
-            ```
-        * Generates an encrypted, non-deterministic wallet:
-            ```bash
-            python3 wallet_client.py generate wallet -encrypt -wallet=wallet.json -password=MySecurePassword
-            ```
-        * Generates a deterministic wallet:
-            ```bash
-            python3 wallet_client.py generate wallet -deterministic -wallet=wallet.json -password=MySecurePassword
-            ```
-        * Generates an encrypted, deterministic wallet, with 2-Factor Authentication:
-            ```bash
-            python3 wallet_client.py generate wallet -encrypt -deterministic -2fa -wallet=wallet.json -password=MySecurePassword
-            ```
-        * Creates a back up of an existing encrypted wallet and overwrites it with an un-encrypted, deterministic wallet, while skipping various prompts: 
-            ```bash
-            python3 wallet_client.py generate wallet -wallet=wallet.json -deterministic -backup=True -disable-overwrite-warning -overwrite-password=MySecurePassword
-            ```
-        </details>
+    </dd></dl>
+    </dd></dl>
+    </dd></dl>
+  
+  * `-show`: Filters wallet entries origin.
+    * `-show generated`: Retrieves only the information of internally generated wallet entries.
     
-    - ### Address Generation:
-        <details>
-        <summary>Expand</summary>
-        
-        * Generates an address for a wallet that is un-encrypted and/or non-deterministic:
-            ```bash
-            python3 wallet_client.py generate eaddress -wallet=wallet.json
-            ```
-        * Generates an address for a wallet that is encrypted and/or deterministic:
-            ```bash
-            python3 wallet_client.py generate address -wallet=wallet.json -password=MySecurePassword
-            ```
-        </details>
-    
-    - ### Wallet Decryption:
-        <details>
-        <summary>Expand</summary>
-        
-        *Note: An encrypted wallet is not required to use this sub-command. Therefore, it has been designed to also return data from wallets that are not encrypted.*
+    * `-show imported`: Retrieves only the information of imported wallet entries.
 
-        * Decrypts an entire wallet:
-            ```bash
-            python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword
-            ```
-        </details>
-    
-    - ### Wallet Decryption with Filtering:
-        <details>
-        <summary>Overview:</summary>
+  </dd></dl>
+  </details>
 
-        * *To exclude specific addresses from the filtered data a hyphen `-` can be added before the specified address.*
-        * *Addresses will only be filtered if they are apart of the wallet that is being decrypted.*
-        * *One or more addresses can be specified and must be seperated by a comma `,`.*
-        * *One or more fields can be specified and must be seperated by a comma `,`.*
-        * *If one or more fields are not specified, then all fields are included in the filtered data (id, 
-        mnemonic, private_key, public_key, and address).*
-        * *Various filtering combinations can be used.*
-        </details>
-        <details>
-        <summary>Filtering Examples:</summary>
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>send</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to create a transaction on the Denaro blockchain. It allows users to send Denaro to a specified address.
+
+  *Note: The source of funds for the transaction (the sender) can be specified in two ways: either by using an address that is associated with a wallet file, or directly via the private key of a Denaro address.*
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py send [-h] [-verbose] [-node NODE] -amount <AMOUNT> from [-wallet WALLET] [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-private-key PRIVATE_KEY] to <receiver> [-message MESSAGE]
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `send`: Main command to initiate a transaction.
+    * `-amount` (Required): Specifies the amount of Denaro to be sent.
+  
+  * `from <options>`: Specifies the sender's details.
+    * `-wallet`: The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+    * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+    * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+    * `-address`: A Denaro address that is stored in the wallet. This address is used to create the transaction and send funds.
+  
+    * `-private-key`: The private key of a Denaro address. Not required if specifying an address that is stored in a wallet file.
+  
+  * `to <options>`: Specifies the receiver's details.
+    * `receiver` (Required): The receiving address.
+  
+    * `-message`: Optional transaction message.
+  
+  * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>balance</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to check the balance of addresses on the Denaro blockchain that are asociated with a specified wallet file.
+
+  *Similar to `decryptwallet filter`, the `balance` sub-command can also filter wallet entries. The `-address` option can be used to filter one or more addresses that are stored in a wallet. Addresses can be excluded by adding a hyphen (`-`) to the beginning of it. Wallet entries can also be filtered based on origin (See `-show` option for more details).*
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py balance [-h] [-verbose] [-node NODE] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] [-address ADDRESS] [-convert-to CURRENCY_CODE] [-show {generated,imported}] [-json] [-to-file]
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet` (Required): The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided.
+  
+  * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+  * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+  * `-address`:  One or more Denaro addresses that are stored in the wallet to get the balance of. Adding a hyphen `-` to the beginning of an address will exclude it. If not specified, then the balances of all addresses stored in the wallet will be shown.
+    * The format is:
+
+    <dl><dd>
+    <dl><dd>
+    <dl><dd>
+
+    ```bash
+    -address=ADDRESS_1,-ADDRESS_2,...
+    ```
+
+    </dd></dl>
+    </dd></dl>
+    </dd></dl>
+  
+  * `-convert-to`: Converts the monetary value of balances to a user specified currency, factoring in current exchange rates against the USD value of DNR. Supports 161 international currencies and major cryptocurrencies. A valid currency code is required (e.g., 'USD', 'EUR', 'GBP', 'BTC'). By default balance values are calculated in USD.
+  
+  * `-show`: Filters balance information based on wallet entry origin.
+    * `-show generated`: Retrieves only the balance information of internally generated wallet entries.
+    
+    * `-show imported`: Retrieves only the balance information of imported wallet entries.
+  
+  * `-json`: Prints the balance information in JSON format.
+  
+  * `-to-file`: Saves the output of the balance information to a file. The resulting file will be in JSON format and named as "*[WalletName]​_balance_[Timestamp].json*" and will be stored in "*/[WalletDirectory]/balance_information/[WalletName]/*".
+  
+  * `-node`: Specifies the Denaro node to connect to. Must be a valid IP Address or URL. If not specified or the node is not valid, then the wallet client will use the default Denaro node (http://localhost:3006).
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b>Balance JSON Format:</b></summary>
+  <dl><dd>
+  <dl><dd>
+
+  When saved to a file or when the `-json` option is used, the balance information will be structured in JSON format. It includes details for both generated and imported addresses, along with total balances and the current exchange rate.
+
+```json
+  {
+  "balance_data": {
+    "wallet_file_path": "<path-string>",
+    "wallet_version": "<version-string>",
+    "addresses": [
+      {
+        "id": "<int-string>",
+        "address": "<string>",
+        "balance": {
+          "currency": "DNR",
+          "amount": "<decimal-string>",
+          "<currency_code>_value": "<currency_symbol><decimal-string>"
+        }
+      }
+    ],
+    "imported_addresses": [
+      {
+        "id": "<int-string>",
+        "address": "<string>",
+        "balance": {
+          "currency": "DNR",
+          "amount": "<decimal-string>",
+          "<currency_code>_value": "<currency_symbol><decimal-string>"
+        }
+      }
+    ],
+    "exchange_rate": "<currency_symbol><decimal-string>",
+    "total_balance": "<decimal-string> DNR",
+    "total_<currency_code>_value": "<currency_symbol><decimal-string>",
+    "lastUpdated": "<datetime-string>"
+  }
+}
+```
+  
+  </dd></dl>
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>import</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to import an Denaro address into a specified wallet file via it's private key.
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py import [-h] [-verbose] -wallet WALLET [-password PASSWORD] [-2fa-code TFACODE] -private-key PRIVATE_KEY
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet` (Required): The filename or filepath of the wallet. Defaults to the `./wallets/` directory if no specific filepath is provided. This specifies wallet where the address will be imported.
+  
+  * `-password`: The password of the specified wallet. Required if the wallet is encrypted.
+  
+  * `-2fa-code`: Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.
+  
+  * `-private-key`: The private key of a Denaro address. This is used to generate the corresponding address data that will be imported into the  wallet file.
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b><code>backupwallet</code>:</b></summary>
+  <dl><dd>
+
+  This sub-command is used to backup a wallet file. An option to choose the backup directory is available.
+
+  **Syntax**:
+
+  <dl><dd>
+
+  ```bash
+  wallet_client.py backupwallet [-h] -wallet WALLET [-path PATH]
+  ```
+
+  </dd></dl>
+
+  <details>
+  <summary><b>Options:</b></summary>
+  <dl><dd>
+
+  * `-wallet` (Required): The filename or filepath of a wallet. Defaults to the `./wallets/` directory if no specific filepath is provided. This specifies be the wallet to backup.
+  
+  * `-path`: The directory to save the backup file. Defaults to the `./wallets/wallet_backups/` directory if no specific filepath is provided.
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+       
+
+<details>
+<summary><b>Usage Examples:</b></summary>
+<dl><dd>
+
+<details>
+<summary><b>Creating Wallets:</b></summary>
+<dl><dd>
+
+<i>The wallet filename does not require a .json extension to be added as this is entirely optional. By default, the script will add the extension to the filename if not present.
+
+If the wallet file specified already exists then the user will be prompted with a warning and asked if they want to backup the wallet file. If the user chooses not to back up the wallet file, then they will be prompted with an additional warning and asked to confirm the overwrite of the wallet file.
+
+When overwriting an encrypted wallet, the password associated with the it is required, and the user will be prompted to type it in. The user can choose to bypass one or more of these prompts with the use of `-backup`, `-disable-overwrite-warning`, or `-overwrite-password` (Refer to [generate wallet](#generatewallet) options for details).</i>
+
+<details>
+  <summary><b>Examples:</b></summary>
+  <dl><dd>
+
+  <details>
+  <summary>Generates an un-encrypted non-deterministic wallet:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate wallet -wallet=wallet.json
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Generates an un-encrypted deterministic wallet:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate wallet -deterministic -wallet=wallet.json
+  ```
+
+  </dd></dl>
+  </details>
         
-        <dl><dd>
-        To get an idea of how filtering works, below are a few examples.
+  <details>
+  <summary>Generates an encrypted non-deterministic wallet:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate wallet -encrypt -wallet=wallet.json -password=MySecurePassword
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Generates an encrypted deterministic wallet, with 2-Factor Authentication:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate wallet -encrypt -deterministic -2fa -wallet=wallet.json -password=MySecurePassword
+  ```
+
+  </dd></dl>
+  </details>
+    
+  <details>
+  <summary>Creates a backup of an encrypted wallet, and overwrites it with a new un-encrypted wallet, while skipping prompts:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate wallet -wallet=wallet.json -deterministic -backup=True -disable-overwrite-warning -overwrite-password=MySecurePassword
+  ```
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+
+
+</dd></dl>
+</details>
+
+<details>
+<summary><b>Generating Addresses:</b></summary>
+<dl><dd>
+    
+  <details>
+  <summary>Generates an address for a wallet that is un-encrypted and/or non-deterministic:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate eaddress -wallet=wallet.json
+  ```
+
+  </dd></dl>
+  </details>
         
-        *Note: The following addresses are used only for these examples and you should use your own.*
-        
-        <details>
-        <summary>Retrieves all of the data associated with the addess specified.</summary>
+  <details>
+  <summary>Generates an address for a wallet that is encrypted and/or deterministic:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py generate address -wallet=wallet.json -password=MySecurePassword
+  ```
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+
+<details>
+<summary><b>Wallet Decryption:</b></summary>
+<dl><dd>
+
+  <i>The `decryptwallet` sub-command was initially designed to only return data for encrypted wallets, but has since been re-factored to also return data for un-encrypted wallets.</i>
+    
+  **Decrypts an entire wallet:**
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword
+  ```
+
+  </dd></dl>
+    
+  <details>
+  <summary><b>Data Filtering:</b></summary>
+  <dl><dd>
+
+  <i>Data filtering allows users to selectively filter data from a wallet file. Various filtering options and combinations can be used. Refer to [decryptwallet filter](#decryptwallet-filter) for details on the correct syntax and rules for filtering wallet data.</i>
+
+  
+
+  <details>
+  <summary><b>Examples:</b></summary>
+  <dl><dd>
+
+  <details>
+  <summary>Retrieve all data for a specific address:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Retrieve all data for multiple specified addresses:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
+  ```
+
+  </dd></dl>
+  </details>
+
           
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
-        ```
-        </details>
-        <details>
-        <summary>Excludes an address from the results, and will only retrieve the data associated with the rest of the wallet entries if any:</summary>
-          
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
-        ```
-        </details>
-        <details>
-        <summary>Excludes an address from the results, and will retrieve only the 'mnemonic' associated with the rest of the wallet entries if any:</summary>
-        
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=mnemonic
-        ```
-        </details>
-        <details>
-        <summary>Retrieves all of the data associated for the multiple addresses specified:</summary>
-        
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
-        ```
-        </details>
-        <details>
-        <summary>Retrieves only the 'private_key' and 'public_key' associated with the multiple addresses specified:</summary>
-          
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=private_key,public_key
-        ```
-        </details>
-        <details>
-        <summary>Excludes the specified addresses from the results, and will retrieve only the 'public_key' and `id` associated with the rest of the wallet entries if any:</summary>
-        
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=public_key,id
-        ```
-        </details>
-        <details>
-        <summary>Retrieves only the 'address' associated with all wallet entries:</summary>
-          
-        ```bash
-        python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -field=address
-        ```
-        </details>
-        </dd></dl>
-        </details>
-    
-    - ### Making a Transaction:
-        <details>
-        <summary>Expand</summary>
-        
-        *Note: If a wallet is encrypted, be sure to specify the password for it.*
-        * Sends 100 Denaro to a recipient using an address associated with a wallet:        
-            ```bash
-            python3 wallet_client.py send -amount=100 from -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4 to DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
-            ```
-        * Sends 100 Denaro to a recipient using the priate key associated with a Denaro address:
-            
-            *Private keys should be in hexdecimal format and are generally 64 characters in length. It is not reccomended to directly specify a private key, as this could lead to the irreversable loss of funds if anyone has access to it.*
+  <details>
+  <summary>Retrieve data for all addresses except for a specific one:</summary>
+  <dl><dd>
 
-            ```bash
-            python3 wallet_client.py send -amount=100 from -private-key=43c718efb31e0fef4c94cbd182e3409f54da0a8eab8d9713f5b6b616cddbf4cf to DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
-            ```
-        </details>
-    
-    - ### Checking Balances:
-        <details>
-        <summary>Expand</summary>
-        
-        *Note: If a wallet is encrypted, be sure to specify the password for it.*
-        * Retrieves the balance information of all wallet entries:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json
-            ```
-        * Prints the balance information of wallet entries in json format:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -json
-            ```
-        * Saves the json output of balance information of wallet entries to a file:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -to-file
-            ```
-        </details>
-        
-        <details>
-        <summary>Filtering Examples:</summary>
-            
-        As mentioned in the usage documentation, the `balance` sub-command has a way to filter wallet entries similar to `decryptwallet filter`. The `-address` option can be used to filter one or more addresses that are associated with a wallet. Addresses can be excluded by adding a hyphen (`-`) to the beginning of it. Addresses can also be filtered based on origin (See `-show` option for more details).
-        
-        Many filter combinations can be used. Below are just a few examples but for more information please refer to the "Wallet Decryption with Filtering" section.
-        
-        *Note: If a wallet is encrypted, be sure to specify the password for it.*
-        
-        * Will only retrieve the balance information of imported wallet entries:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -show=imported
-            ```
-        * Will only retrieve the balance information of generated wallet entries:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -show=generated
-            ```
-        * Retrieves the balance information of a specific address associated with a wallet:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
-            ```
-        
-        * Retrieves the balance information of multiple addresses associated with a wallet:
-            
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
-            ```
-            
-        * Retrieves the balance information of all wallet entries but excludes specific addresses:
-        
-            ```bash
-            python3 wallet_client.py balance -wallet=wallet.json -address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
-            ```
-        </details>
-    
-    - ### Importing a Wallet Entry:
-        <details>
-        <summary>Expand</summary>
-        
-        *Note: If a wallet is encrypted, be sure to specify the password for it.*
-        
-        *Private keys should be in hexdecimal format and are generally 64 characters in length. It is not reccomended to directly specify a private key, as this could lead to the irreversable loss of funds if anyone has access to it. The private key in this example was randomly generated and dose not have funds.*
-        
-        * Imports a wallet entry based on the private key of a Denaro address:
-            
-            ```bash
-            python3 wallet_client.py import -wallet=wallet.json -private-key=43c718efb31e0fef4c94cbd182e3409f54da0a8eab8d9713f5b6b616cddbf4cf
-            ```
-        </details>
-    </details>
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
+  ```
 
+  </dd></dl>
+  </details>
+
+
+  <details>
+  <summary>Exclude an address and retrieve a specific field (<code>mnemonic</code>) for the rest:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=mnemonic
+  ```
+
+  </dd></dl>
+  </details>
+
+<details>
+  <summary>Retrieve a single field (<code>address</code>) for all wallet entries:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -field=address
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Retrieve specific fields (<code>private_key</code> and <code>public_key</code>) for multiple addresses:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=private_key,public_key
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Exclude multiple addresses and retrieve specific fields (<code>public_key</code> and <code>id</code>) for the rest:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py decryptwallet -wallet=wallet.json -password=MySecurePassword filter -address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA -field=public_key,id
+  ```
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+
+<details>
+<summary><b>Making Transactions:</b></summary>
+<dl><dd>
+    
+  <details>
+  <summary>Sends 100 Denaro to a recipient using an address contained in wallet file:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py send -amount=100 from -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4 to DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
+  ```
+
+  </dd></dl>
+  </details>
+        
+  <details>
+  <summary> Sends 100 Denaro to a recipient using the private key of a Denaro address:</summary>
+  <dl><dd>
+
+<i>Private keys should be in hexdecimal format and are 64 characters in length. It is not reccomended to directly specify a private key, as this could lead to the irreversable loss of funds if anyone has access to it.</i>
+
+  ```bash
+  python3 wallet_client.py send -amount=100 from -private-key=43c718efb31e0fef4c94cbd182e3409f54da0a8eab8d9713f5b6b616cddbf4cf to DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
+  ```
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+
+<details>
+<summary><b>Checking Balances:</b></summary>
+<dl><dd>
+
+  <details>
+  <summary>Retrieves the balance information of all wallet entries:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json
+  ```
+
+  </dd></dl>
+  </details>
+        
+  <details>
+  <summary>Prints the balance information of wallet entries in json format:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -json
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Saves the json output of balance information of wallet entries to a file:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -to-file
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary><b>Data Filtering:</b></summary>
+  <dl><dd>
+
+  <i>The `balance` sub-command allows for filtering wallet entries in a similar way to the `decryptwallet filter` sub-command. Various filtering options and combinations can be used. Refer to the [balance](#balance) sub-command for details on the correct syntax and rules for filtering balance data. </i>
+
+  <details>
+  <summary><b>Examples:</b></summary>
+  <dl><dd>
+
+  <details>
+  <summary>Will only retrieve the balance information of imported wallet entries:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -show=imported
+  ```
+
+  </dd></dl>
+  </details>
+    
+  <details>
+  <summary>Will only retrieve the balance information of generated wallet entries:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -show=generated
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Retrieves the balance information of a specific address associated with a wallet:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Retrieves the balance information of multiple addresses associated with a wallet:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -address=DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
+  ```
+
+  </dd></dl>
+  </details>
+
+  <details>
+  <summary>Retrieves the balance information of all wallet entries but excludes specific addresses:</summary>
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py balance -wallet=wallet.json -address=-DuxRWZXZSeuWGmjTJ99GH5Yj5ri4kVy55MGFAL74wZcW4,-DwpnwDyCTEXP4q7fLRzo4vwQvGoGuDKxikpCHB9BwSiMA
+  ```
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+  </dd></dl>
+  </details>
+
+</dd></dl>
+</details>
+
+<details>
+<summary><b>Importing Addresses:</b></summary>
+<dl><dd>
+
+<i>Private keys should be in hexdecimal format and are 64 characters in length. It is not reccomended to directly specify a private key, as this could lead to the irreversable loss of funds if anyone has access to it.</i>
+    
+  Imports a Denaro addres from it's private key:
+  <dl><dd>
+
+  ```bash
+  python3 wallet_client.py import -wallet=wallet.json -private-key=43c718efb31e0fef4c94cbd182e3409f54da0a8eab8d9713f5b6b616cddbf4cf
+  ```
+
+  </dd></dl>
+
+</dd></dl>
+</details>
+
+</details>
+</dd></dl>
+</details>
 
 ------------
 
@@ -589,7 +1006,7 @@ deactivate
     </details>
 
     <details>
-    <summary><b>In-Memory Processing and Zero-Disk Plaintext Policy:</b></summary>
+    <summary id="in-memory-processing-and-zero-disk-plaintext-policy"><b>In-Memory Processing and Zero-Disk Plaintext Policy:</b></summary>
     <dl><dd>
     
     - When encryption is enabled, wallet files remain structured as JSON but the sensitive data they contain remain encrypted for the entirety of its lifecycle. Fields such as entries, verifiers, salts, and secrets are ciphertext and can only be decrypted at runtime when a valid password is provided. 
@@ -614,7 +1031,7 @@ deactivate
     </details>
 
     <details>
-    <summary><b> Tracking Failed Password Attempts:</b></summary>
+    <summary><b>Tracking Failed Password Attempts:</b></summary>
     <dl><dd>
     
     - The wallet client incorperates a security measure to identify and record failed password attempts on encrypted wallets without directly storing an insecure plaintext counter. Instead, the number of failed attempts is stored by using a deterministic and reversible scrambling transformation of the encrypted data, using the counter itself as the seed for the transformation.

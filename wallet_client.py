@@ -1569,7 +1569,7 @@ def validate_and_select_node(node):
         node address if no address is provided. It returns None if the provided address is invalid.
     """
     if node:
-        is_node_valid, node, _, _ = Verification.validate_node_address(node, referer="validate_and_select_node")
+        is_node_valid, node, _, _ = Verification.validate_node_address((node, False), referer="validate_and_select_node")
         if not is_node_valid:
             node = 'http://localhost:3006'
     else:
@@ -1757,7 +1757,7 @@ def checkBalance(filename, password, totp_code=None, address = [], node = None, 
                 print(f'Total Balance: {total_balance} DNR\nTotal {currency_code} Value: {currency_symbol}{formatted_total_balance_value}')
                 DataManipulation.secure_delete([var for var in locals().values() if var is not None])
             
-            if to_json or to_file and not stop_signal.is_set():
+            if to_json or to_file:
                 # Prepare JSON data
                 balance_data = {"balance_data": {"wallet_file_path": filename, "wallet_version":"0.2.2", "addresses": [], "imported_addresses" : [], f"exchange_rate":f'{currency_symbol}{formatted_price}',"total_balance":"", f"total_{currency_code.lower()}_value":"", "lastUpdated": datetime.utcnow().isoformat() + "Z"}}
 

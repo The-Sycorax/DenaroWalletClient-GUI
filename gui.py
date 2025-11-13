@@ -2698,7 +2698,7 @@ class WalletOperations:
         
                 if transaction:
                     transaction_hash = sha256(transaction.hex())
-                    hyperlink_url = f"https://denaro-explorer.aldgram-solutions.fr/address/transaction/{transaction_hash}"
+                    hyperlink_url = f"https://denaro-explorer.aldgram-solutions.fr/tx/{transaction_hash}"
                     hyperlink_text = f"Denaro Explorer link: {hyperlink_url}"
                     tx_str = (f'\nTransaction successfully pushed to node. \n'
                                 f'Transaction hash: {transaction_hash}\n'

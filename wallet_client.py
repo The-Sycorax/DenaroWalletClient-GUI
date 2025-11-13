@@ -2604,9 +2604,25 @@ def main():
     verbose_parser = argparse.ArgumentParser(add_help=False)
     verbose_parser.add_argument('-verbose', action='store_true', help='Enables info and debug messages.')
     
-    #Node URL parser 
+    # Node URL parser 
     denaro_node = argparse.ArgumentParser(add_help=False)
     denaro_node.add_argument('-node', type=str, help="Specifies the URL or IP address of a Denaro node.")
+
+    # Wallet argument parser (wallet filename only)
+    wallet_parser = argparse.ArgumentParser(add_help=False)
+    wallet_parser.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
+
+    # Wallet with authentication parser (wallet, password, and 2FA)
+    wallet_auth_parser = argparse.ArgumentParser(add_help=False)
+    wallet_auth_parser.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
+    wallet_auth_parser.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
+    wallet_auth_parser.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+
+    # Wallet with optional authentication parser (wallet optional, password and 2FA)
+    wallet_optional_auth_parser = argparse.ArgumentParser(add_help=False)
+    wallet_optional_auth_parser.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.")
+    wallet_optional_auth_parser.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
+    wallet_optional_auth_parser.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
 
     # Create the parser
     parser = argparse.ArgumentParser(description="Manages wallets and transactions for the Denaro crypto-currency.")
@@ -2619,8 +2635,7 @@ def main():
     generate_subparsers = parser_generate.add_subparsers(dest='command', required=True, help="Sub-commands for generating wallets, addresses, and paper wallets")
     
     # Subparser for generating a new wallet
-    parser_generatewallet = generate_subparsers.add_parser('wallet', help="Generates a new wallet with various options like encryption and 2FA", parents=[verbose_parser])
-    parser_generatewallet.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
+    parser_generatewallet = generate_subparsers.add_parser('wallet', help="Generates a new wallet with various options like encryption and 2FA", parents=[verbose_parser, wallet_parser])
     parser_generatewallet.add_argument('-encrypt', help="Enables encryption for new wallets.", action='store_true')
     parser_generatewallet.add_argument('-2fa', help="Enables 2-Factor Authentication for new encrypted wallets.", dest='tfa', action='store_true')
     parser_generatewallet.add_argument('-deterministic', help="Enables deterministic address generation for new wallets.", action='store_true')
@@ -2631,26 +2646,17 @@ def main():
     parser_generatewallet.add_argument('-overwrite-password', help="Used to bypass the password confirmation prompt when overwriteing a wallet that is encrypted. A string paramter is required, and should specify the password used for the encrypted wallet.", dest='overwrite_password')
 
     # Subparser for generating a new address
-    parser_generateaddress = generate_subparsers.add_parser('address', help="Generate a new address for an existing wallet", parents=[verbose_parser])
-    parser_generateaddress.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
-    parser_generateaddress.add_argument('-password', help="The password of the specified wallet. Required for encrypted and/or deterministic wallets.")
-    parser_generateaddress.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_generateaddress = generate_subparsers.add_parser('address', help="Generate a new address for an existing wallet", parents=[verbose_parser, wallet_auth_parser])
     parser_generateaddress.add_argument('-amount', help="Specifies the amount of addresses to generate (Maximum of 256).", type=int)
  
     # Subparser for generating a paper wallet
-    parser_generatepaperwallet = generate_subparsers.add_parser('paperwallet', help="Used to generate a Denaro paper wallet either by using an address that is associated with a wallet file, or directly via a private key that corresponds to a particular address.", parents=[verbose_parser])
-    parser_generatepaperwallet.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.")
-    parser_generatepaperwallet.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
-    parser_generatepaperwallet.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_generatepaperwallet = generate_subparsers.add_parser('paperwallet', help="Used to generate a Denaro paper wallet either by using an address that is associated with a wallet file, or directly via a private key that corresponds to a particular address.", parents=[verbose_parser, wallet_optional_auth_parser])
     parser_generatepaperwallet.add_argument('-address', help="Specifies a Denaro address associated with the wallet file. A paper wallet will be generated for this Denaro address.")
     parser_generatepaperwallet.add_argument('-private-key', help="Specifies the private key associated with a Denaro address. Not required if specifying an address from a wallet file.", dest='private_key')   
     parser_generatepaperwallet.add_argument('-type', help="Specifies the file type for the paper wallet. The default filetype is PDF.", choices=['pdf','png'], default='pdf')
 
     # Subparser for decrypting the wallet
-    parser_decryptwallet = subparsers.add_parser('decryptwallet',help="Used to decrypt all entries in a wallet file, or selectivly decrypt specific entries based on a provided filter, and returns the decrypted data back to the console.", parents=[verbose_parser])
-    parser_decryptwallet.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
-    parser_decryptwallet.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
-    parser_decryptwallet.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_decryptwallet = subparsers.add_parser('decryptwallet',help="Used to decrypt all entries in a wallet file, or selectivly decrypt specific entries based on a provided filter, and returns the decrypted data back to the console.", parents=[verbose_parser, wallet_auth_parser])
     parser_decryptwallet.add_argument('-json', help="Prints formatted JSON output for better readability.", action='store_true')
         
     # Subparser for filter under decryptwallet
@@ -2661,27 +2667,20 @@ def main():
     parser_filter.add_argument('-show', help="Filters wallet entries origin. 'generated' is used to retrieve only the information of internally generated wallet entries. 'imported' is used to retrieve only the information of imported wallet entries.", choices=['generated', 'imported'], dest="filter_subparser_show")    
     
     # Subparser for importing wallet data based on a private key
-    parser_import = subparsers.add_parser('import',help="Used to import a wallet entry into a specified wallet file using the private key of a Denaro address.", parents=[verbose_parser])
-    parser_import.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
-    parser_import.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
-    parser_import.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_import = subparsers.add_parser('import',help="Used to import a wallet entry into a specified wallet file using the private key of a Denaro address.", parents=[verbose_parser, wallet_auth_parser])
     parser_import.add_argument('-private-key', help="Specifies the private key associated with a Denaro address to import.", dest='private_key', required=True)
 
     # Subparser for backing up wallet
-    parser_backupwallet = subparsers.add_parser('backupwallet',help="Used to create a backup of a wallet file.", parents=[verbose_parser])
-    parser_backupwallet.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
+    parser_backupwallet = subparsers.add_parser('backupwallet',help="Used to create a backup of a wallet file.", parents=[verbose_parser, wallet_parser])
     parser_backupwallet.add_argument('-path', help="Specifies the directory to save the wallet backup file. Defaults to the `./wallets/wallet_backups/` directory if no specific filepath is provided.")
-
+    
     # Subparser for sending a transaction
     parser_send = subparsers.add_parser('send',help="Main command to initiate a Denaro transaction.", parents=[verbose_parser, denaro_node])
     parser_send.add_argument('-amount', required=True, help="Specifies the amount of Denaro to be sent.")    
     
     # Subparser to specify the wallet file and address to send from. The private key of an address can also be specified.
     send_from_subparser = parser_send.add_subparsers(dest='transaction_send_from_subparser', required=True)
-    parser_send_from = send_from_subparser.add_parser('from',help="Specifies the sender's details.", parents=[verbose_parser, denaro_node])
-    parser_send_from.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.")
-    parser_send_from.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
-    parser_send_from.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_send_from = send_from_subparser.add_parser('from',help="Specifies the sender's details.", parents=[verbose_parser, denaro_node, wallet_optional_auth_parser])
     parser_send_from.add_argument('-address', help="The Denaro address to send from. The address must be associated with the specified wallet.")
     parser_send_from.add_argument('-private-key', help="Specifies the private key associated with a Denaro address. Not required if specifying an address from a wallet file.", dest='private_key')
     
@@ -2692,10 +2691,7 @@ def main():
     parser_send_to.add_argument('-message', help="Optional transaction message.", default="")
     
     # Subparser for checking balance
-    parser_balance = subparsers.add_parser('balance',help="Used to check the balance of addresses in the Denaro blockchain that are asociated with a specified wallet file.", parents=[verbose_parser, denaro_node])
-    parser_balance.add_argument('-wallet', help="Specifies the wallet filename. Defaults to the `./wallets/` directory if no specific filepath is provided.", required=True)
-    parser_balance.add_argument('-password', help="The password of the specified wallet. Required for wallets that are encrypted.")
-    parser_balance.add_argument('-2fa-code', help="Optional Two-Factor Authentication code for encrypted wallets that have 2FA enabled. Should be the 6-digit code generated from an authenticator app.", dest='tfacode', required=False, type=str)
+    parser_balance = subparsers.add_parser('balance',help="Used to check the balance of addresses in the Denaro blockchain that are asociated with a specified wallet file.", parents=[verbose_parser, denaro_node, wallet_auth_parser])
     parser_balance.add_argument('-address', help="Specifies one or more addresses to get the balance of. Adding a hyphen `-` to the beginning of an address will exclude it. Format is: `address=ADDRESS_1, ADDRESS_2, ADDRESS_3,...`")
     parser_balance.add_argument('-convert-to', help="Converts the monetary value of balances to a user specified currency, factoring in current exchange rates against the USD value of DNR. Supports 161 international currencies and major cryptocurrencies. A valid currency code is required (e.g., 'USD', 'EUR', 'GBP', 'BTC'). By default balance values are calculated in USD.", dest='currency_code', type=str)
     parser_balance.add_argument('-show', help="Filters balance information based on entry origin. 'generated' is used to retrieve only the balance information of internally generated wallet entries. 'imported' is used to retrieve only the balance information of imported wallet entries.", choices=['generated', 'imported'])

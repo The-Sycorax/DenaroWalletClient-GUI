@@ -318,7 +318,7 @@ deactivate
   </details>
 
   <details>
-  <summary><b><code>decryptwallet filter</code>:</b></summary>
+  <summary id="sub-command-decryptwallet-filter"><b><code>decryptwallet filter</code>:</b></summary>
   <dl><dd>
 
   This sub-command filters wallet entries by one or more addresses and/or fields. Adding a hyphen `-` to the beginning of an address will exclude it from the results. Wallet entries can also be filtered based on origin (See `-show` option for more details). This sub-command should come directly after the other options that have been provided for `decryptwallet`.
@@ -428,7 +428,7 @@ deactivate
   </details>
 
   <details>
-  <summary><b><code>balance</code>:</b></summary>
+  <summary id="sub-command-balance"><b><code>balance</code>:</b></summary>
   <dl><dd>
 
   This sub-command is used to check the balance of addresses on the Denaro blockchain that are asociated with a specified wallet file.
@@ -719,7 +719,7 @@ deactivate
   <summary><b>Data Filtering:</b></summary>
   <dl><dd>
 
-  <i>Data filtering allows users to selectively filter data from a wallet file. Various filtering options and combinations can be used. Refer to [decryptwallet filter](#decryptwallet-filter) for details on the correct syntax and rules for filtering wallet data.</i>
+  <i>Data filtering allows users to selectively filter data from a wallet file. Various filtering options and combinations can be used. Refer to [decryptwallet filter](#sub-command-decryptwallet-filter) for details on the correct syntax and rules for filtering wallet data.</i>
 
   
 
@@ -887,7 +887,7 @@ deactivate
   <summary><b>Data Filtering:</b></summary>
   <dl><dd>
 
-  <i>The `balance` sub-command allows for filtering wallet entries in a similar way to the `decryptwallet filter` sub-command. Various filtering options and combinations can be used. Refer to the [balance](#balance) sub-command for details on the correct syntax and rules for filtering balance data. </i>
+  <i>The `balance` sub-command allows for filtering wallet entries in a similar way to the `decryptwallet filter` sub-command. Various filtering options and combinations can be used. Refer to the [balance](#sub-command-balance) sub-command for details on the correct syntax and rules for filtering balance data. </i>
 
   <details>
   <summary><b>Examples:</b></summary>

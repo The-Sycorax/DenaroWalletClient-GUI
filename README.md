@@ -2,11 +2,25 @@
 
 **This repo contains the source code for the Denaro Wallet Client, developed for the Denaro cryptocurrency. It has been designed with a strong emphasis on security, providing users with a secure and efficient way to manage their digital assets.** 
 
-**The wallet client provides essential functionalities such as wallet creation, address generation, transaction processing, balance checking, and wallet imports. Advanced functionalities are also provided, including encryption and decryption of wallet data, optional two-factor authentication (2FA), wallet entry filtering, support for deterministic wallets, and several security measures to protect wallet data *(See the [Wallet Security Framework](#wallet-security-framework) section for more details)*.**
-
-**Denaro Github Repository: https://github.com/The-Sycorax/denaro**
+The wallet client provides essential functionalities such as wallet creation, address generation, transaction processing, balance checking, and wallet imports. Advanced functionalities are also provided, including encryption and decryption of wallet data, optional two-factor authentication (2FA), wallet entry filtering, support for deterministic wallets, and several security measures to protect wallet data *(See the [Wallet Security Framework](#wallet-security-framework) section for more details)*.
 
 ![screenshot](screenshot.png "GUI Screenshot")
+
+
+## Important Note from Developer
+
+**Denaro's active development has been moved to this Github repository: https://github.com/The-Sycorax/denaro**
+
+**Some users and I have been coordinating a revival effort for Denaro, and substantial updates have been made to it's codebase in the above repository. However, Denaro's original upstream repository has yet to be updated, but a pull request is planned for the future.**
+
+**If you want to operate a Denaro node, please use the code and instructions from the repository linked above.**
+
+### Links:
+* **New Website: [https://denaro.mine.bz](https://denaro.mine.bz/)**
+* **Denaro Node: [https://node.denaro.network](https://node.denaro.network/)**
+* **Block Explorer: [https://denaro-explorer.aldgram-solutions.fr](https://denaro-explorer.aldgram-solutions.fr/)**
+* **Discord Server: [https://discord.gg/4Sq2dK4KMv](https://discord.gg/4Sq2dK4KMv)**
+
 
 ## Installation Guide
 *Note: The Denaro Wallet Client has not been tested on Windows or MacOS and support is unknown at this time. It is reccomended to use the wallet client on Ubuntu/Debian Linux to avoid any compatibility or stability issues.*
@@ -1106,7 +1120,9 @@ deactivate
 
 ## Disclaimer
 
-Neither The-Sycorax nor contributors of this project assume liability for any loss of funds incurred through the use of this software! This software is provided "AS IS" under the [MIT License](LICENSE) without guarantees or warrenties of any kind, express or implied. It is strongly recommended that users back up their cryptographic keys. Users are solely responsible for the security and management of their assets! The use of this software implies acceptance of all associated risks, including financial losses, with no liability on The-Sycorax or contributors of this project.
+Neither The-Sycorax nor contributors of this project assume liability for any loss of funds incurred through the use of this software! This software is provided "AS IS" under the [MIT License](LICENSE) without guarantees or warrenties of any kind, express or implied. 
+
+It is strongly recommended that users back up their cryptographic keys. Users are solely responsible for the security and management of their assets! The use of this software implies acceptance of all associated risks, including financial losses, with no liability on The-Sycorax or contributors of this project.
 
 ------------
 

@@ -1426,7 +1426,7 @@ class Dialogs:
                  "widget_name":"frame_4",
                  "parent":"frame_2", 
                  "class":"HyperlinkLabel",
-                 "class_config":"text=\"The source code for the Denaro cryptocurrency is available at: https://github.com/denaro-coin/denaro\", link_text=\"\", url=\"https://github.com/denaro-coin/denaro\"",
+                 "class_config":"text=\"The source code for the Denaro cryptocurrency is available at: https://github.com/The-Sycorax/denaro\", link_text=\"\", url=\"https://github.com/The-Sycorax/denaro\"",
                  "grid_config":"row=3, column=1, sticky='w'"},
 
                 {'type': 'label', 

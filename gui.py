@@ -1043,19 +1043,20 @@ class DenaroWalletGUI(tk.Tk):
     def create_menus(self):
         # Context Menu for Textboxes
         self.textboxes_context_menu = tb.Menu(self, tearoff=0)
-        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_cut',    label="Cut",        command=self.gui_utils.cut_text)
-        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_copy',   label="Copy",       command=self.gui_utils.copy_selection)
-        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_paste',  label="Paste",      command=self.gui_utils.paste_text)
-        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_delete', label="Delete",     command=lambda: self.gui_utils.cut_text(delete=True))
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_cut', label="Cut", command=self.gui_utils.cut_text)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_copy', label="Copy", command=self.gui_utils.copy_selection)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_paste', label="Paste", command=self.gui_utils.paste_text)
+        self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_delete', label="Delete", command=lambda: self.gui_utils.cut_text(delete=True))
         self._add_menu_item(self.textboxes_context_menu, 'separator', None) # No key needed for separators
         self._add_menu_item(self.textboxes_context_menu, 'command', 'ctx_select_all', label="Select All", command=self.gui_utils.select_all_text)
         
         # Context Menu for Treeview
         self.treeview_context_menu = tb.Menu(self, tearoff=0)
-        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_copy',     label="Copy",             command=self.gui_utils.copy_selection)
-        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_send',     label="Send",             command=lambda: self.gui_utils.address_context_menu_selection(set_address_combobox=True, show_send_page=True))
-        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_addr_info',label="Address Information",     command=self.dialogs.address_info)
-        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_explorer', label="View on Explorer", command=lambda: self.gui_utils.address_context_menu_selection(view_explorer=True))
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_copy', label="Copy", command=self.gui_utils.copy_selection)
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_send', label="Send", command=lambda: self.gui_utils.address_context_menu_selection(action='send'))
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_addr_info',label="Address Information", command=lambda: self.gui_utils.address_context_menu_selection(action='address_info'))
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_qr_code', label="Show QR Code", command=lambda: self.gui_utils.address_context_menu_selection(action='qr_code'))
+        self._add_menu_item(self.treeview_context_menu, 'command', 'tree_explorer', label="View on Explorer", command=lambda: self.gui_utils.address_context_menu_selection(action='explorer'))
         
         # Menu Bar
         self.menu_bar = tb.Menu(self, tearoff=0)
@@ -1166,7 +1167,7 @@ class DenaroWalletGUI(tk.Tk):
         self.left_frame_inner = tb.Frame(self.left_frame_outer,style="gray.TFrame")
         
         # Sidebar buttons
-        button_names = ["Account", "Send", "Receive", "History", "Advanced", "Settings"]
+        button_names = ["Account", "Send", "History", "Advanced", "Settings"]
         for name in button_names:
             self.create_sidebar_button(name)
 
@@ -1832,41 +1833,6 @@ class GUIUtils:
                 else:
                     self.root.toggle_button.config(state="normal", text="◄")
             toggle_sidebar_expand()
-        
-
-        #Old Function
-        #def toggle_sidebar():
-        #    toggle_button.focus_set()
-        #    if left_frame_outer.winfo_viewable():
-        #        toggle_button.config(state="disabled")
-        #        def toggle_sidebar_collapse():
-        #            min_width = 1
-        #            step = 5  # Width change per step
-        #            left_frame_outer_width = left_frame_outer.winfo_width()
-        #        
-        #            if left_frame_outer_width > min_width:
-        #                new_width = max(min_width, left_frame_outer_width - step)
-        #                left_frame_outer.config(width=new_width)
-        #                root.after(10, toggle_sidebar_collapse)
-        #            else:
-        #                left_frame_outer.grid_remove()
-        #                toggle_button.config(state="normal", text=">>")
-        #        toggle_sidebar_collapse()
-        #    else:
-        #        left_frame_outer.grid()
-        #        toggle_button.config(state="disabled")
-        #        def toggle_sidebar_expand():
-        #            max_width = 150  # Desired width when fully open
-        #            step = 5  # Width change per step
-        #            left_frame_outer_width = left_frame_outer.winfo_width()
-        #        
-        #            if left_frame_outer_width < max_width:
-        #                new_width = min(max_width, left_frame_outer_width + step)
-        #                left_frame_outer.config(width=new_width)
-        #                root.after(10, toggle_sidebar_expand)
-        #            else:
-        #                toggle_button.config(state="normal", text="<<")
-        #        toggle_sidebar_expand()
 
 
     def show_context_menu(self, event):
@@ -2016,25 +1982,65 @@ class GUIUtils:
             # Clipboard does not contain text or other error
             pass
 
-    def address_context_menu_selection(self, event=None, show_send_page=False, set_address_combobox=False, view_explorer=False):
+    def address_context_menu_selection(self, event=None, action=None):
+        """
+        Handles context menu actions for addresses in the treeview.
+        
+        Arguments:
+        - event: Optional event object (if not provided, uses self.root.current_event)
+        - action: Action to perform. Valid values:
+            - 'send': Set address in combobox and show Send page
+            - 'explorer': Open address in blockchain explorer
+            - 'qr_code': Show QR code dialog for address
+            - 'address_info': Show address information dialog
+        """
         if event:
             widget = event.widget 
         else:
             widget = self.root.current_event.widget
             event = self.root.current_event
         
-        if isinstance(widget, ttk.Treeview):
-            row_id = widget.identify_row(event.y)
-            col_id = int(widget.identify_column(event.x).replace('#', '')) - 1
-            if len(row_id) > 0 and col_id == 0:            
-                item = widget.item(row_id)
-                if set_address_combobox:
-                    self.root.send_page.send_from_combobox.set(item['values'][0])
-                if show_send_page:
-                    self.root.show_page("Send")
-                if view_explorer:
-                    url = f"https://denaro-explorer.aldgram-solutions.fr/address/{item['values'][0]}"
-                    self.open_link(url, show_link=True)
+        if not isinstance(widget, ttk.Treeview) or not action:
+            return
+        
+        row_id = widget.identify_row(event.y)
+        col_id = int(widget.identify_column(event.x).replace('#', '')) - 1
+        if len(row_id) > 0 and col_id == 0:            
+            item = widget.item(row_id)
+            address = item['values'][0] if item['values'] else None
+            
+            if not address:
+                return
+            
+            if action == 'send':
+                self.root.send_page.send_from_combobox.set(address)
+                self.root.show_page("Send")
+            elif action == 'explorer':
+                url = f"https://denaro-explorer.aldgram-solutions.fr/address/{address}"
+                self.open_link(url, show_link=True)
+            elif action == 'qr_code':
+                self.show_address_qr_code(address)
+            elif action == 'address_info':
+                entry_data, entry_type = self.root.wallet_operations.get_entry_data(address)
+                self.root.dialogs.address_info(address=address, entry_data=entry_data, entry_type=entry_type)
+
+    def show_address_qr_code(self, address):
+        """
+        Generates a QR code for the given address and displays it in a dialog.
+        
+        Arguments:
+        - address: The address string to generate a QR code for
+        """
+        if not address:
+            return
+        
+        # Generate QR code with logo
+        qr_img = wallet_client.QRCodeUtils.generate_qr(address)
+        qr_img = wallet_client.QRCodeUtils.add_logo_to_qr(qr_img, "./denaro/gui_assets/denaro_logo.png")
+        
+        # Show the dialog with the QR code
+        self.root.dialogs.address_qr_dialog(address=address, qr_img=qr_img)
+
 
 
     def on_root_click(self, event):
@@ -2078,7 +2084,7 @@ class GUIUtils:
     
 
     def on_treeview_double_click(self, event=None):
-        self.address_context_menu_selection(event, set_address_combobox=True, show_send_page=True)
+        self.address_context_menu_selection(event, action='send')
 
 
     def identify_selectable_widgets(self, container):
@@ -2461,9 +2467,6 @@ class GUIUtils:
         else:
             self.root.dialogs.messagebox("Error", "Can not close wallet while a transaction is taking place.")
             return
-        
-
-
 
 
 class WalletOperations:
@@ -2931,10 +2934,10 @@ class Callbacks:
         )
 
 
-    def post_show_address_info(self, event=None, entry_data=None, entry_type=None, wait=False, modal=True):
+    def post_show_address_info(self, address=None, entry_data=None, entry_type=None, wait=False, modal=True):
         if wait:
             dialog_lambda = lambda result_queue: self.root.dialogs.address_info(
-                event=event,
+                address=address,
                 entry_data=entry_data,
                 entry_type=entry_type,
                 result_queue=result_queue,
@@ -2943,8 +2946,38 @@ class Callbacks:
             return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
         else:
             self.root.wallet_thread_manager.request_queue.put(
-                lambda ed=entry_data, et=entry_type, ev=event: self.root.dialogs.address_info(
-                    event=ev, entry_data=ed, entry_type=et, modal=modal
+                lambda addr=address, ed=entry_data, et=entry_type: self.root.dialogs.address_info(
+                    address=addr, entry_data=ed, entry_type=et, modal=modal
+                )
+            )
+            return None
+
+    def post_address_qr_dialog(self, address=None, qr_img=None, wait=False, modal=True):
+        """
+        Posts a request to show the address QR code dialog.
+        Can be called from non-GUI threads safely.
+        
+        Arguments:
+        - address: Address string to display
+        - qr_img: PIL Image object containing the QR code (must be provided)
+        - wait: If True, waits for the dialog to complete before returning
+        - modal: Whether the dialog should be modal
+        
+        Returns:
+        Result if wait=True, None otherwise
+        """
+        if wait:
+            dialog_lambda = lambda result_queue: self.root.dialogs.address_qr_dialog(
+                address=address,
+                qr_img=qr_img,
+                result_queue=result_queue,
+                modal=modal
+            )
+            return self.root.wallet_thread_manager.post_and_wait(dialog_lambda)
+        else:
+            self.root.wallet_thread_manager.request_queue.put(
+                lambda addr=address, img=qr_img: self.root.dialogs.address_qr_dialog(
+                    address=addr, qr_img=img, modal=modal
                 )
             )
             return None

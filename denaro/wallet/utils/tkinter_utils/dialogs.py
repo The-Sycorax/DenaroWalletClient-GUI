@@ -1,10 +1,11 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, font
 import ttkbootstrap as tb
 from .custom_dialog import CustomDialog
 from PIL import ImageTk, Image
 import _tkinter
-from tkinter import font
+import os
+import wallet_client
 
 class Dialogs:
 
@@ -86,6 +87,7 @@ class Dialogs:
             on_submit=on_submit_callback,
             on_cancel=on_cancel_callback,
             modal=modal,
+            dialog_data=kwargs.pop('dialog_data', None),
             **kwargs
         )
     
@@ -227,18 +229,26 @@ class Dialogs:
         )
         
 
-    def address_info(self, event=None, entry_data=None, entry_type=None, modal=True, result_queue=None, on_complete=None):
+    def address_info(self, address=None, entry_data=None, entry_type=None, modal=True, result_queue=None, on_complete=None):
+        """
+        Overview:
+        Displays address information dialog for a given address.
         
-        if not entry_data:
-            widget = event.widget if event else self.root.current_event.widget
-            if isinstance(widget, ttk.Treeview):
-                # Treeview copy functionality
-                row_id = widget.identify_row(self.root.current_event.y)
-                col_id = int(widget.identify_column(self.root.current_event.x).replace('#', '')) - 1
-                if len(row_id) > 0:            
-                    item = widget.item(row_id)
-                    address = item['values'][col_id]
-                    entry_data, entry_type = self.root.wallet_operations.get_entry_data(address)        
+        Arguments:
+        - address: Address string (if provided, entry_data will be fetched automatically)
+        - entry_data: Optional pre-fetched entry data dictionary
+        - entry_type: Optional entry type ('entries' or 'imported_entries')
+        - modal: Whether the dialog should be modal
+        - result_queue: Optional queue for synchronous result delivery
+        - on_complete: Optional callback for asynchronous result delivery
+        
+        Returns:
+        None (result delivered via queue or callback)
+        """
+        # If address is provided but entry_data is not, fetch it
+        # (This handles cases where address_info is called directly without going through address_context_menu_selection)
+        if address and not entry_data:
+            entry_data, entry_type = self.root.wallet_operations.get_entry_data(address)     
     
         
         if not entry_data:
@@ -413,6 +423,181 @@ class Dialogs:
             callbacks=dialog_callbacks,
             classes={"KeyToggle": KeyToggle},
             modal=modal
+        )
+
+    def address_qr_dialog(self, address=None, qr_img=None, modal=True, result_queue=None, on_complete=None):
+        """
+        Overview:
+        Displays a QR code dialog for a given address with a pre-generated QR code image.
+        
+        Arguments:
+        - address: Address string to display
+        - qr_img: PIL Image object containing the QR code (must be provided)
+        - modal: Whether the dialog should be modal
+        - result_queue: Optional queue for synchronous result delivery
+        - on_complete: Optional callback for asynchronous result delivery
+        
+        Returns:
+        None (result delivered via queue or callback)
+        """
+
+        # Validate required parameters
+        if not address or not qr_img:
+            if result_queue:
+                result_queue.put(None)
+            if on_complete:
+                on_complete(None)
+            return
+        
+        # Define the dialog prompt
+        prompt = [
+            # Main content frame (left side)
+            {"type": "frame",
+             "widget_name": "main_content_frame",
+             "grid_config": "column=0, row=0, sticky='nsew', padx=10, pady=10"},
+            
+            # Sidebar frame (right side)
+            {"type": "frame",
+             "widget_name": "sidebar_frame",
+             "grid_config": "column=1, row=0, sticky='nsew', padx=10, pady=10"},
+            
+            # Address entry (read-only, for copying) - row 0, initially in row 2
+            {"type": "entry",
+             "widget_name": "address_entry",
+             "parent": "main_content_frame",
+             "config": "style='addressInfo.TEntry', state='readonly', font='Helvetica 10 bold', justify='center'",
+             "insert": f"string='{address}'",
+             "style_map_config": "style='addressInfo.TEntry', lightcolor='[(\"focus\", \"white\")]'",
+             "variables": {"expand_entry_width": True},
+             "grid_config": "row=2, column=0, sticky='ew', padx=10, pady=(10, 5)",
+             "translate": False},
+            
+            # QR Code label - row 1
+            {"type": "label",
+             "widget_name": "qr_label",
+             "parent": "main_content_frame",
+             "grid_config": "row=1, column=0, pady=10"},
+            
+            # Button frame for Save and Close buttons - row 3
+            {"type": "frame",
+             "widget_name": "button_frame",
+             "parent": "main_content_frame",
+             "grid_config": "row=3, column=0, sticky='ew', padx=10, pady=10"},
+            
+            # Save button
+            {"type": "button",
+             "widget_name": "save_button",
+             "config": "text='Save QR Code'",
+             "command": "command_str='save_address_qr_code', args='(self,)', execute_on_load=False",
+             "parent": "button_frame",
+             "grid_config": "row=0, column=0, sticky='ew', padx=(0, 5)"},
+            
+            # Close button
+            {"type": "button",
+             "config": "text='Close'",
+             "command": "command_str=self.cancel",
+             "parent": "button_frame",
+             "grid_config": "row=0, column=1, sticky='ew', padx=(5, 0)"},
+            
+            # Sidebar content - Options label
+            {"type": "label",
+             "parent": "sidebar_frame",
+             "config": "text='QR Code Options', font='Helvetica 14 bold'",
+             "grid_config": "row=0, column=0, sticky='w', pady=(0, 15)"},
+            
+            # Include Logo checkbox
+            {"type": "checkbox",
+             "widget_name": "include_logo_checkbox",
+             "parent": "sidebar_frame",
+             "config": "text='Include Logo'",
+             "grid_config": "row=1, column=0, sticky='w', pady=5"},
+            
+            # Address Position label
+            {"type": "label",
+             "parent": "sidebar_frame",
+             "config": "text='Address Position:', font='Helvetica 12'",
+             "grid_config": "row=2, column=0, sticky='w', pady=(15, 5)"},
+            
+            # Address Position radio buttons
+            {"type": "radiobutton",
+             "widget_name": "address_pos_none",
+             "parent": "sidebar_frame",
+             "config": "text='None', variable='address_position', value='none'",
+             "grid_config": "row=3, column=0, sticky='w', padx=20"},
+            
+            {"type": "radiobutton",
+             "widget_name": "address_pos_above",
+             "parent": "sidebar_frame",
+             "config": "text='Above QR Code', variable='address_position', value='above'",
+             "grid_config": "row=4, column=0, sticky='w', padx=20"},
+            
+            {"type": "radiobutton",
+             "widget_name": "address_pos_below",
+             "parent": "sidebar_frame",
+             "config": "text='Below QR Code', variable='address_position', value='below'",
+             "grid_config": "row=5, column=0, sticky='w', padx=20"},
+            
+            # Module Drawer label
+            {"type": "label",
+             "parent": "sidebar_frame",
+             "config": "text='Module Style:', font='Helvetica 12'",
+             "grid_config": "row=6, column=0, sticky='w', pady=(15, 5)"},
+            
+            # Module Drawer combobox
+            {"type": "combobox",
+             "widget_name": "module_drawer_combobox",
+             "parent": "sidebar_frame",
+             "config": "values=('Square', 'Circle', 'Rounded', 'Gapped Square', 'Vertical Bars', 'Horizontal Bars'), state='readonly', width=15",
+             "grid_config": "row=7, column=0, sticky='w', padx=20, pady=(0, 5)"},
+            
+            # Color Style label
+            {"type": "label",
+             "parent": "sidebar_frame",
+             "config": "text='Color Style:', font='Helvetica 12'",
+             "grid_config": "row=8, column=0, sticky='w', pady=(15, 5)"},
+            
+            # Color Style combobox
+            {"type": "combobox",
+             "widget_name": "color_style_combobox",
+             "parent": "sidebar_frame",
+             "config": "values=('Gradient Blue', 'Gradient Purple', 'Gradient Green', 'Black', 'Blue', 'Red', 'Green', 'Purple'), state='readonly', width=15",
+             "grid_config": "row=9, column=0, sticky='w', padx=20, pady=(0, 5)"},
+            
+            # Hidden canvas for rendering saved QR code image
+            {"type": "canvas",
+             "widget_name": "save_render_canvas",
+             "parent": "main_content_frame",
+             "config": "width=1, height=1, highlightthickness=0, bg='white'",
+             "grid_config": "row=4, column=0"},
+            
+            # Setup trigger to display QR code after dialog is created
+            {"type": "label",
+             "widget_name": "setup_trigger",
+             "config": "",
+             "command": "command_str='setup_address_qr_dialog', args='(self,)', execute_on_load=True",
+             "grid_config": "column=0"}
+        ]
+        
+        # Define callbacks
+        dialog_callbacks = {
+            "setup_address_qr_dialog": self.dialog_functions.setup_address_qr_dialog,
+            "save_address_qr_code": self.dialog_functions.save_address_qr_code,
+            "update_qr_preview": self.dialog_functions.update_qr_preview
+        }
+        
+        dialog_data={
+            'qr_img': qr_img, 'address': address}
+        
+        # Create the dialog with QR image passed via dialog_data
+        self.create_dialog_with_checks(
+            prompt=prompt,
+            title="Address QR Code",
+            result_queue=result_queue,
+            on_complete=on_complete,
+            result_processor=lambda r: True,
+            callbacks=dialog_callbacks,
+            modal=modal,
+            dialog_data=dialog_data
         )
             
 
@@ -1450,6 +1635,7 @@ class Dialogs:
         self.create_dialog_with_checks(prompt=prompt, title="About", result_queue=result_queue, on_complete=on_complete,
             callbacks={"set_label_image":self.dialog_functions.set_label_image, "set_hyperlink":self.dialog_functions.set_hyperlink},
             classes={"HyperlinkLabel": HyperlinkLabel}, modal=modal)
+    
 
     def show_2FA_QR_dialog(self, qr_window_data, from_gui=False, modal=True):
         """
@@ -1948,6 +2134,449 @@ class DialogFunctions:
         self.root.data_manipulation_util.secure_delete([
             self.root.qr_img, self.root.totp_secret, self.root.tk_image
         ])
+
+    def setup_address_qr_dialog(self, dialog_instance, state=None):
+        """
+        Sets up the QR code display in the address QR dialog.
+        Initializes the preview and sets up option widgets with default values.
+        """
+        refs = dialog_instance.widget_references
+        qr_label = refs.get('qr_label')
+        if not qr_label:
+            return
+        
+        # Get initial data from dialog_data
+        address = dialog_instance.dialog_data.get('address') if dialog_instance.dialog_data else None
+        initial_qr_img = dialog_instance.dialog_data.get('qr_img') if dialog_instance.dialog_data else None
+        if not address or not initial_qr_img:
+            return
+        
+        # Store original address for regeneration
+        dialog_instance.dialog_data['original_address'] = address
+        
+        # Set up radio button variable for address position (already created by CustomDialog)
+        address_position_var = dialog_instance.radio_variables.get('address_position')
+        if address_position_var:
+            address_position_var.set('below')  # Default to showing address below QR code
+        
+        # Set up checkbox variable for include logo (get the first/only checkbox variable)
+        include_logo_checkbox = refs.get('include_logo_checkbox')
+        if include_logo_checkbox and dialog_instance.checkbox_variables:
+            # Get the first checkbox variable (there's only one checkbox)
+            checkbox_var = list(dialog_instance.checkbox_variables.values())[0]
+            if checkbox_var:
+                checkbox_var.set(True)  # Default to checked
+        
+        # Set up module drawer combobox with default value
+        module_drawer_combobox = refs.get('module_drawer_combobox')
+        if module_drawer_combobox:
+            module_drawer_combobox.set('Circle')  # Default to Circle
+            module_drawer_combobox.bind('<<ComboboxSelected>>', lambda e: self.update_qr_preview(dialog_instance))
+        
+        # Set up color style combobox with default value
+        color_style_combobox = refs.get('color_style_combobox')
+        if color_style_combobox:
+            color_style_combobox.set('Gradient Blue')  # Default to Gradient Blue
+            color_style_combobox.bind('<<ComboboxSelected>>', lambda e: self.update_qr_preview(dialog_instance))
+        
+        # Bind checkbox and radio buttons to update preview
+        if include_logo_checkbox:
+            # Store the checkbox variable reference for easy access
+            if dialog_instance.checkbox_variables:
+                dialog_instance.dialog_data['include_logo_var'] = list(dialog_instance.checkbox_variables.values())[0]
+            include_logo_checkbox.config(command=lambda: self.update_qr_preview(dialog_instance))
+        
+        address_pos_none = refs.get('address_pos_none')
+        address_pos_above = refs.get('address_pos_above')
+        address_pos_below = refs.get('address_pos_below')
+        if address_pos_none:
+            address_pos_none.config(command=lambda: self.update_qr_preview(dialog_instance))
+        if address_pos_above:
+            address_pos_above.config(command=lambda: self.update_qr_preview(dialog_instance))
+        if address_pos_below:
+            address_pos_below.config(command=lambda: self.update_qr_preview(dialog_instance))
+        
+        # Make dialog non-resizable
+        dialog_instance.dialog.resizable(False, False)
+        
+        # Configure grid weights for main frame
+        main_content_frame = refs.get('main_content_frame')
+        sidebar_frame = refs.get('sidebar_frame')
+        if main_content_frame and sidebar_frame:
+            dialog_instance.master.grid_columnconfigure(0, weight=1)
+            dialog_instance.master.grid_columnconfigure(1, weight=0)
+            dialog_instance.master.grid_rowconfigure(0, weight=1)
+            main_content_frame.grid_columnconfigure(0, weight=1)
+        
+        # Configure button frame columns to have equal weight
+        button_frame = refs.get('button_frame')
+        if button_frame:
+            button_frame.grid_columnconfigure(0, weight=1)
+            button_frame.grid_columnconfigure(1, weight=1)
+        
+        # Hide the save render canvas (position it off-screen)
+        save_render_canvas = refs.get('save_render_canvas')
+        if save_render_canvas:
+            save_render_canvas.grid_remove()  # Remove from grid layout
+        
+        # Initial preview display
+        self.update_qr_preview(dialog_instance)
+
+    def _convert_module_drawer_display_to_internal(self, display_name):
+        """Converts display name to internal module drawer type."""
+        conversion_map = {
+            'Square': 'square',
+            'Circle': 'circle',
+            'Rounded': 'rounded',
+            'Gapped Square': 'gapped',
+            'Vertical Bars': 'vertical',
+            'Horizontal Bars': 'horizontal'
+        }
+        return conversion_map.get(display_name, 'circle')
+    
+    def _convert_color_style_display_to_internal(self, display_name):
+        """Converts display name to internal color style."""
+        conversion_map = {
+            'Gradient Blue': 'gradient_blue',
+            'Gradient Purple': 'gradient_purple',
+            'Gradient Green': 'gradient_green',
+            'Black': 'black',
+            'Blue': 'blue',
+            'Red': 'red',
+            'Green': 'green',
+            'Purple': 'purple'
+        }
+        return conversion_map.get(display_name, 'gradient_blue')
+    
+    def update_qr_preview(self, dialog_instance, state=None):
+        """
+        Updates the QR code preview based on current settings.
+        Regenerates the QR code and updates the display.
+        """
+        refs = dialog_instance.widget_references
+        qr_label = refs.get('qr_label')
+        address_entry = refs.get('address_entry')
+        main_content_frame = refs.get('main_content_frame')
+        
+        if not qr_label:
+            return
+        
+        # Get current settings
+        address = dialog_instance.dialog_data.get('original_address') if dialog_instance.dialog_data else None
+        if not address:
+            return
+        
+        # Get checkbox state
+        include_logo = True
+        include_logo_var = dialog_instance.dialog_data.get('include_logo_var')
+        if include_logo_var:
+            include_logo = include_logo_var.get()
+        
+        # Get radio button state for address position
+        address_position = 'none'
+        address_position_var = dialog_instance.radio_variables.get('address_position')
+        if address_position_var:
+            address_position = address_position_var.get()
+        
+        # Get module drawer selection
+        module_drawer_type = 'circle'  # Default
+        module_drawer_combobox = refs.get('module_drawer_combobox')
+        if module_drawer_combobox:
+            display_name = module_drawer_combobox.get()
+            module_drawer_type = self._convert_module_drawer_display_to_internal(display_name)
+        
+        # Get color style selection
+        color_style = 'gradient_blue'  # Default
+        color_style_combobox = refs.get('color_style_combobox')
+        if color_style_combobox:
+            display_name = color_style_combobox.get()
+            color_style = self._convert_color_style_display_to_internal(display_name)
+        
+        # Generate new QR code with current settings (preview only - no address text)
+        logo_path = "./denaro/gui_assets/denaro_logo.png"
+        
+        # Generate base QR code with selected style options
+        qr_img = wallet_client.QRCodeUtils.generate_qr(address, module_drawer_type=module_drawer_type, color_style=color_style)
+        
+        # Add logo if requested
+        if include_logo:
+            qr_img = wallet_client.QRCodeUtils.add_logo_to_qr(qr_img, logo_path)
+        
+        # Store the preview QR image (without address text) for display
+        # The full QR with address text will be generated on save
+        
+        # Resize QR code for preview (max 400px width/height while maintaining aspect ratio)
+        max_preview_size = 300
+        qr_width, qr_height = qr_img.size
+        if qr_width > max_preview_size or qr_height > max_preview_size:
+            if qr_width > qr_height:
+                scale = max_preview_size / qr_width
+            else:
+                scale = max_preview_size / qr_height
+            preview_width = int(qr_width * scale)
+            preview_height = int(qr_height * scale)
+            preview_img = qr_img.resize((preview_width, preview_height), Image.Resampling.LANCZOS)
+        else:
+            preview_img = qr_img
+        
+        # Update the preview
+        tk_image = ImageTk.PhotoImage(preview_img)
+        qr_label.config(image=tk_image)
+        qr_label.image = tk_image  # Keep a reference to prevent garbage collection
+        
+        # Store preview QR image and settings for later use
+        dialog_instance.dialog_data['preview_qr_img'] = qr_img
+        dialog_instance.dialog_data['tk_image'] = tk_image
+        
+        # Move or hide address_entry based on address_position
+        if address_entry and main_content_frame:
+            if address_position == 'none':
+                # Temporarily enable entry to clear it, then set back to readonly
+                address_entry.config(state='normal')
+                address_entry.delete(0, 'end')
+                address_entry.insert(0, "")
+                address_entry.config(state='readonly')
+                # Disable mouse interaction: set cursor to default and prevent all mouse events
+                address_entry.config(cursor='arrow')
+                
+                # Bind all mouse events to do nothing (prevent context menu and interactions)
+                def prevent_event(event):
+                    return "break"
+
+                address_entry.bind('<Button-3>', prevent_event)
+                # Remove widget from event binding chain using bindtags
+                current_tags = list(address_entry.bindtags())
+                # Keep only the widget itself and 'all', remove class bindings
+                address_entry.bindtags([address_entry, current_tags[-1] if current_tags else 'all'])
+                # Move to row 1 (same as QR code) and lower it behind the QR label
+                address_entry.grid(row=1, column=0, sticky='ew', padx=10, pady=(10, 5))
+                # Get the QR label and lower the entry behind it
+                qr_label = refs.get('qr_label')
+                if qr_label:
+                    address_entry.lower(qr_label)
+            elif address_position == 'above':
+                # Restore address content and move to row 0 (above QR code)
+                address_entry.config(state='normal')
+                address_entry.delete(0, 'end')
+                address_entry.insert(0, address)
+                address_entry.config(state='readonly')
+                # Restore default cursor (entry widgets typically use 'xterm' or 'ibeam')
+                address_entry.config(cursor='xterm')
+                # Restore normal event bindings by resetting bindtags to default
+                address_entry.bindtags(('TEntry', str(address_entry), '.', 'all'))
+                # Unbind the prevent_event handlers
+                address_entry.unbind('<Button-3>')
+                address_entry.grid(row=0, column=0, sticky='ew', padx=10, pady=(10, 5))
+            else:  # 'below'
+                # Restore address content and move to row 2 (below QR code)
+                address_entry.config(state='normal')
+                address_entry.delete(0, 'end')
+                address_entry.insert(0, address)
+                address_entry.config(state='readonly')
+                # Restore default cursor (entry widgets typically use 'xterm' or 'ibeam')
+                address_entry.config(cursor='xterm')
+                # Restore normal event bindings by resetting bindtags to default
+                address_entry.bindtags(('TEntry', str(address_entry), '.', 'all'))
+                # Unbind the prevent_event handlers
+                address_entry.unbind('<Button-3>')
+                address_entry.grid(row=2, column=0, sticky='ew', padx=10, pady=(10, 5))
+
+    def save_address_qr_code(self, dialog_instance, state=None):
+        """
+        Saves the QR code image to a file chosen by the user.
+        Captures the QR code and address entry from the dialog and renders them on a canvas
+        to ensure the font matches exactly.
+        """
+        from io import BytesIO
+        
+        # Get widget references
+        refs = dialog_instance.widget_references
+        qr_label = refs.get('qr_label')
+        address_entry = refs.get('address_entry')
+        save_canvas = refs.get('save_render_canvas')
+        
+        if not qr_label or not save_canvas:
+            return
+        
+        # Get the QR image from the label
+        qr_image_tk = qr_label.cget('image')
+        if not qr_image_tk:
+            return
+        
+        # Get the actual PIL image from dialog_data for dimensions
+        preview_qr_img = dialog_instance.dialog_data.get('preview_qr_img') if dialog_instance.dialog_data else None
+        address = dialog_instance.dialog_data.get('original_address', 'qr_code') if dialog_instance.dialog_data else 'qr_code'
+        
+        if not preview_qr_img:
+            return
+        
+        # Get current address position setting
+        address_position = 'none'
+        address_position_var = dialog_instance.radio_variables.get('address_position')
+        if address_position_var:
+            address_position = address_position_var.get()
+        
+        # Get QR code dimensions
+        qr_width, qr_height = preview_qr_img.size
+        
+        # Get font from address entry widget and scale it up for high-resolution rendering
+        widget_font = address_entry.cget('font')
+        scale_factor = 2  # Scale factor for higher resolution rendering
+        padding = 15
+        
+        tk_font = font.Font(family=str(widget_font).split()[0], size=36, weight='bold')
+        text_color = address_entry.cget('foreground') or 'black'       
+        
+        if address_position == 'none':
+            # No text, just return QR code with left/right padding only (no top/bottom padding)
+            final_img = Image.new('RGB', (qr_width + padding * 2, qr_height), 'white')
+            final_img.paste(preview_qr_img, (padding, 0))
+        else:
+            # Measure text dimensions with scaled font (for high-res text rendering)
+            text_width = tk_font.measure(address)
+            text_ascent = tk_font.metrics('ascent')
+            text_descent = tk_font.metrics('descent')
+            
+            # Calculate final dimensions (QR at original size)
+            # Use actual text metrics for accurate height
+            final_text_width = text_width // scale_factor
+            final_text_height = (text_ascent + text_descent) // scale_factor
+            final_width = max(qr_width, final_text_width) + padding * 2
+            # final_height will be recalculated after we get actual text image dimensions
+            
+            # Canvas size for high-res text rendering only (add extra padding for text rendering)
+            text_padding = 10 * scale_factor
+            canvas_width = text_width + text_padding * 2
+            canvas_height = text_ascent + text_descent + text_padding * 2
+            
+            # Configure and position canvas (smaller = faster)
+            dialog_width = dialog_instance.dialog.winfo_width()
+            dialog_height = dialog_instance.dialog.winfo_height()
+            save_canvas.config(width=canvas_width, height=canvas_height)
+            save_canvas.place(x=dialog_width + 1000, y=dialog_height + 1000)
+            save_canvas.delete('all')
+            
+            # Draw only text on canvas at high resolution
+            save_canvas.create_text(
+                canvas_width // 2, text_padding + text_ascent,
+                text=address,
+                font=tk_font,
+                fill=text_color,
+                anchor='center'
+            )
+            
+            # Convert canvas to PIL Image using postscript
+            ps = save_canvas.postscript(
+                colormode='color',
+                width=canvas_width,
+                height=canvas_height,
+                pagewidth=canvas_width,
+                pageheight=canvas_height
+            )
+            img_buffer = BytesIO(ps.encode('utf-8'))
+            text_img = Image.open(img_buffer)
+            
+            # Convert to RGB and scale down text
+            if text_img.mode != 'RGB':
+                text_img = text_img.convert('RGB')
+            # Scale down maintaining aspect ratio, then crop to exact size if needed
+            scaled_width = canvas_width // scale_factor
+            scaled_height = canvas_height // scale_factor
+            text_img = text_img.resize((scaled_width, scaled_height), Image.Resampling.LANCZOS)
+            
+            # Crop to final text dimensions (remove extra padding)
+            text_padding_final = text_padding // scale_factor
+            right = text_padding_final + final_text_width + 10
+            bottom = text_padding_final + final_text_height + 10
+            text_img = text_img.crop((text_padding_final, text_padding_final, right, bottom))
+            
+            # Get actual text image dimensions after cropping
+            actual_text_width, actual_text_height = text_img.size
+            
+            # Recalculate final_height using actual text dimensions to ensure consistent padding
+            final_height = qr_height + actual_text_height + padding * 3
+            
+            # Create final image and composite QR code and text
+            final_img = Image.new('RGB', (final_width, final_height), 'white')
+            
+            if address_position == 'above':
+                # Paste text at top, centered
+                text_x = (final_width - actual_text_width) // 2
+                text_y = padding
+                final_img.paste(text_img, (text_x, text_y))
+                # Paste QR code below text, centered
+                qr_x = (final_width - qr_width) // 2
+                qr_y = padding + actual_text_height + padding
+                final_img.paste(preview_qr_img, (qr_x, qr_y))
+            else:  # below
+                # Paste QR code at top, centered
+                qr_x = (final_width - qr_width) // 2
+                qr_y = padding
+                final_img.paste(preview_qr_img, (qr_x, qr_y))
+                # Paste text below QR code, centered
+                text_x = (final_width - actual_text_width) // 2
+                text_y = padding + qr_height + padding
+                final_img.paste(text_img, (text_x, text_y))
+        
+        # Crop left and right sides to remove excess whitespace
+        # Find the leftmost and rightmost columns with non-white pixels
+        img_array = final_img.load()
+        width, height = final_img.size
+        
+        # Find leftmost non-white column
+        left_bound = 0
+        for x in range(width):
+            has_content = False
+            for y in range(height):
+                pixel = img_array[x, y]
+                # Check if pixel is not white (allowing for slight variations)
+                if pixel != (255, 255, 255):
+                    has_content = True
+                    break
+            if has_content:
+                left_bound = x
+                break
+        
+        # Find rightmost non-white column
+        right_bound = width - 1
+        for x in range(width - 1, -1, -1):
+            has_content = False
+            for y in range(height):
+                pixel = img_array[x, y]
+                # Check if pixel is not white (allowing for slight variations)
+                if pixel != (255, 255, 255):
+                    has_content = True
+                    break
+            if has_content:
+                right_bound = x
+                break
+        
+        # Crop the image to remove left and right whitespace
+        if left_bound < right_bound:
+            final_img = final_img.crop((left_bound, 0, right_bound + 1, height))
+        
+        # Clean up canvas - restore to hidden state
+        save_canvas.place_forget()
+        save_canvas.grid_remove()
+        save_canvas.delete('all')
+        
+        # Generate default filename from address
+        default_filename = f"{address}_qr_code.png"
+        
+        # Ask user for save location
+        file_path = filedialog.asksaveasfilename(
+            title="Save QR Code",
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+            initialfile=default_filename,
+            initialdir=os.path.expanduser("~")
+        )
+        
+        if file_path:
+            try:
+                final_img.save(file_path)
+            except Exception as e:
+                pass
 
 
     def initial_page_setup(self, dialog, state=None):

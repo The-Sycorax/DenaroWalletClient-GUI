@@ -15,13 +15,17 @@ import uuid
 import contextlib
 
 class CustomDialog:
-    def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, on_submit=None, on_cancel=None, modal=True, eval_context=None, **kwargs):
+    def __init__(self, parent=None, title=None, prompt=[], callbacks={}, classes={}, on_submit=None, on_cancel=None, modal=True, eval_context=None, dialog_data=None, **kwargs):
         self.callbacks = callbacks
         self.custom_args = kwargs
         self.classes = classes
         
         # Store the context dictionary for later use by resolve_command/resolve_callback.
         self.eval_context = eval_context if eval_context is not None else {}
+
+        # Store arbitrary data objects that can be accessed by dialog functions
+        # This allows passing objects like images, data structures, etc. to callbacks
+        self.dialog_data = dialog_data if dialog_data is not None else {}
         
         self.on_submit = on_submit
         self.on_cancel = on_cancel

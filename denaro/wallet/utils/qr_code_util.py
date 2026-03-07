@@ -1,6 +1,13 @@
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
-from qrcode.image.styles.moduledrawers import CircleModuleDrawer
+from qrcode.image.styles.moduledrawers import (
+    CircleModuleDrawer,
+    SquareModuleDrawer,
+    RoundedModuleDrawer,
+    GappedSquareModuleDrawer,
+    VerticalBarsDrawer,
+    HorizontalBarsDrawer
+)
 from qrcode.image.styles.colormasks import SolidFillColorMask
 from PIL import Image, ImageDraw
 
@@ -16,45 +23,146 @@ from tkinter_utils.dialogs import Dialogs
 class QRCodeUtils:  
 
     @staticmethod
-    def generate_qr_with_logo(data, logo_path):
+    def get_module_drawer(drawer_type, **kwargs):
         """
-        Overview: 
-        Generates a custom QR code of the TOTP secret token with Denaro's logo in the center.
-        The generated QR code is meant to be scanned by a Authenticator app. 
-
+        Overview:
+        Returns the appropriate module drawer based on the drawer type.
+        
         Arguments:
-        - data (str): The data to encode in the QR code.
-        - logo_path (str): The path to the logo image file.
+        - drawer_type (str): Type of module drawer ('square', 'circle', 'rounded', 'gapped', 'vertical', 'horizontal')
+        - **kwargs: Additional parameters for specific drawers (e.g., radius_ratio for circle)
         
         Returns:
-        - PIL.Image: The generated QR code image.
+        - Module drawer instance
         """
-        # Initialize QR Code with high error correction
-        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H)  
+        drawer_map = {
+            'square': SquareModuleDrawer,
+            'circle': CircleModuleDrawer,
+            'rounded': RoundedModuleDrawer,
+            'gapped': GappedSquareModuleDrawer,
+            'vertical': VerticalBarsDrawer,
+            'horizontal': HorizontalBarsDrawer
+        }
+        
+        drawer_class = drawer_map.get(drawer_type, CircleModuleDrawer)
+        
+        # Set default parameters for specific drawers
+        if drawer_type == 'circle':
+            kwargs.setdefault('radius_ratio', 1.5)
+        elif drawer_type == 'rounded':
+            kwargs.setdefault('radius_ratio', 0.5)
+        
+        return drawer_class(**kwargs)
+    
+    @staticmethod
+    def get_color_palette(color_style):
+        """
+        Overview:
+        Returns a color palette based on the color style.
+        
+        Arguments:
+        - color_style (str): Color style ('gradient_blue', 'gradient_purple', 'gradient_green', 'black', 'blue', 'red', 'green', 'purple')
+        
+        Returns:
+        - list: List of RGB tuples for the color palette
+        """
+        palettes = {
+            'gradient_blue': [(51, 76, 154), (51, 76, 154),
+                             (14, 117, 165), (83, 134, 162),
+                             (83, 134, 162), (14, 117, 165),
+                             (51, 76, 154), (51, 76, 154)],
+            'gradient_purple': [(75, 0, 130), (75, 0, 130),
+                               (138, 43, 226), (186, 85, 211),
+                               (186, 85, 211), (138, 43, 226),
+                               (75, 0, 130), (75, 0, 130)],
+            'gradient_green': [(0, 100, 0), (0, 100, 0),
+                              (34, 139, 34), (50, 205, 50),
+                              (50, 205, 50), (34, 139, 34),
+                              (0, 100, 0), (0, 100, 0)],
+            'black': [(0, 0, 0)],
+            'blue': [(0, 0, 255)],
+            'red': [(255, 0, 0)],
+            'green': [(0, 128, 0)],
+            'purple': [(128, 0, 128)]
+        }
+        return palettes.get(color_style, palettes['gradient_blue'])
+    
+    @staticmethod
+    def generate_qr(data, module_drawer_type='circle', color_style='gradient_blue'):
+        """
+        Overview: 
+        Generates a custom styled QR code with configurable module drawer and colors.
+        
+        Arguments:
+        - data (str): The data to encode in the QR code.
+        - module_drawer_type (str): Type of module drawer ('square', 'circle', 'rounded', 'gapped', 'vertical', 'horizontal')
+        - color_style (str): Color style ('gradient_blue', 'gradient_purple', 'gradient_green', 'black', 'blue', 'red', 'green', 'purple')
+        
+        Returns:
+        - PIL.Image: The generated QR code image with styling.
+        """
+        # Initialize QR Code with high error correction and no border (quiet zone)
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H, border=0)  
         qr.add_data(data)  
+        
+        # Get the module drawer
+        module_drawer = QRCodeUtils.get_module_drawer(module_drawer_type)
         
         # Create a styled QR code image
         qr_img = qr.make_image(
             image_factory=StyledPilImage,
-            module_drawer=CircleModuleDrawer(radius_ratio=1.5),
+            module_drawer=module_drawer,
             color_mask=SolidFillColorMask(back_color=(255, 255, 255))
         )  
         
-        # Define color palette for gradient
-        palette = [(51, 76, 154), (51, 76, 154), (14, 117, 165),
-                   (83, 134, 162), (83, 134, 162), (14, 117, 165), (51, 76, 154), (51, 76, 154)]
+        # Get color palette
+        palette = QRCodeUtils.get_color_palette(color_style)
         
-        # Apply gradient based on the color pallette
-        gradient_img = Image.new("RGB", qr_img.size, (255, 255, 255))  
-        gradient_img = QRCodeUtils.generate_qr_gradient(gradient_img, palette)  
+        # If single color (not gradient), create solid color image
+        if len(palette) == 1:
+            # For solid colors, directly modify the QR code
+            qr_array = qr_img.load()
+            width, height = qr_img.size
+            color = palette[0]
+            
+            for x in range(width):
+                for y in range(height):
+                    pixel = qr_array[x, y]
+                    # If pixel is not white (is part of QR code), replace with chosen color
+                    if pixel != (255, 255, 255):
+                        qr_array[x, y] = color
+        else:
+            # Apply gradient based on the color palette
+            gradient_img = Image.new("RGB", qr_img.size, (255, 255, 255))  
+            gradient_img = QRCodeUtils.generate_qr_gradient(gradient_img, palette)  
+            
+            # Create a mask for the gradient
+            mask = qr_img.convert("L")  
+            threshold = 200  
+            mask = mask.point(lambda p: p < threshold and 255)  
+            
+            # Apply gradient to the QR code
+            qr_img = Image.composite(gradient_img, qr_img, mask)
         
-        # Create a mask for the gradient
-        mask = qr_img.convert("L")  
-        threshold = 200  
-        mask = mask.point(lambda p: p < threshold and 255)  
+        # Return the styled QR code image
+        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not qr_img])
+        return qr_img
+
+    @staticmethod
+    def add_logo_to_qr(qr_img, logo_path):
+        """
+        Overview:
+        Adds a logo to the center of a QR code image.
         
-        # Apply gradient to the QR code
-        qr_img = Image.composite(gradient_img, qr_img, mask)  
+        Arguments:
+        - qr_img (PIL.Image): The QR code image to add the logo to.
+        - logo_path (str): The path to the logo image file.
+        
+        Returns:
+        - PIL.Image: The QR code image with logo added.
+        """
+        if not logo_path:
+            return qr_img
         
         # Load, resize and place the logo
         logo_img = Image.open(logo_path)
@@ -63,16 +171,14 @@ class QRCodeUtils:
         hsize = int((float(logo_img.size[1]) * float(wpercent)))  
         logo_img = logo_img.resize((basewidth, hsize))  
         
-        # Calculate logo position
-        logo_pos = ((qr_img.size[0] - logo_img.size[0]) //
-                    2, (qr_img.size[1] - logo_img.size[1]) // 2)  
+        # Calculate logo position and center it in the QR code
+        logo_pos = ((qr_img.size[0] - logo_img.size[0]) // 2, (qr_img.size[1] - logo_img.size[1]) // 2)
         
         # Paste the logo onto the QR code
-        qr_img.paste(logo_img, logo_pos, logo_img)  
+        qr_img.paste(logo_img, logo_pos, logo_img)
         
-        # Return the final QR code image with the logo
-        DataManipulation.secure_delete([var for var in locals().values() if var is not None and var is not qr_img])
-        return qr_img  
+        return qr_img
+
 
     @staticmethod
     def generate_qr_gradient(image, palette):

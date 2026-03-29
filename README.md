@@ -1082,7 +1082,7 @@ deactivate
     
   - It is important to note that this feature dose not ensure absolute irreversible deletion (See the <a href="#assumption-of-irreversible-deletion">Assumption of Irreversible Deletion</a> section below).
     
-  - Wallet Annihilation is designed to impede the feasibility of forensic wallet data recovery and consists of several distinct routines:
+  - The Wallet Annihilation feature is engineered to impede the feasibility of forensic wallet data recovery and consists of several distinct routines:
       - Before any wiping occurs, the wallet data is encrypted. The cryptographic keys for this routine are generated from random, high-entropy SHA3-512 hashes that are immediately discarded from system memory. This ensures that even if the raw bits could be recovered from the physical storage medium, they would represent nothing more than useless, randomly scrambled ciphertext.
     
       - Following the encryption, the wallet client executes a comprehensive, multi-pass data sanitization routine directly on the wallet file. This routine sequentially applies three industry-recognized data destruction standards to ensure thorough data erasure:        
@@ -1094,18 +1094,16 @@ deactivate
     
       - Finally the file that once held wallet data is truncated to zero bytes and then deleted from the filesystem.
         
-  - This multi-stage Wallet Annihilation protocol provides a comprehensive response to potential security breaches and provides a last line of defense against persistent intrusion attempts. It ensures that a wallet's contents are not just deleted, but "annihilated" (*potentially*). 
+  - This multi-stage Wallet Annihilation protocol provides a comprehensive response to potential security breaches and provides a last line of defense against persistent intrusion attempts.
     
   <details>
   <summary id="assumption-of-irreversible-deletion"><b>Assumption of Irreversible Deletion:</b></summary>
   <dl><dd>
 
-  - The "Wallet Annihilation" feature is engineered to make the recovery of deleted wallet data extreamly challenging, but it is important to recognize that in the field of digital data security, an absolute guarantee of irreversible deletion is not always possible. Therefore it cannot be gauranteed or assumed that data is 100% irrecoverable.
+  - As mentioned, "The Wallet Annihilation feature is engineered to impede the feasibility of forensic wallet data recovery...", in other words it makes the recovery of deleted wallet data extreamly challenging. However, it is important to recognize that in the field of digital data security, it cannot be gauranteed or assumed that data deletion is 100% irreversible.
 
-  - There are advanced techniques such as memory or cache analysis, and the use of certain text editors or specialized analysis software, that might, under specific conditions, be able to retrieve or restore parts of the deleted data.
+  - There are advanced techniques and specialized software for memory or cache analysis and certain text editors, that might under specific conditions be able to retrieve or restore parts of the deleted data.
 
-  - While these enhancements significantly increase the difficulty of unauthorized data recovery, they are predicated on the understanding that complete irreversibility in digital data erasure cannot be unequivocally assured.
-    
   </dl></dd>
   </details>
 

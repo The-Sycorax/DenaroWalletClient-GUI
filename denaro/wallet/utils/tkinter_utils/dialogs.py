@@ -1596,7 +1596,7 @@ class Dialogs:
                  "widget_name":"frame_3",
                  "parent":"frame_2", 
                  "class":"HyperlinkLabel",
-                 "class_config":"text=\"Copyright © 2023-2025 The-Sycorax (https://github.com/The-Sycorax)\", link_text=\"\", url=\"https://github.com/The-Sycorax\"",
+                 "class_config":"text=\"Copyright © 2023-2026 The-Sycorax (https://github.com/The-Sycorax)\", link_text=\"\", url=\"https://github.com/The-Sycorax\"",
                  "grid_config":"row=1, column=1, sticky='w'",
                  "translate": False},
 

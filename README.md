@@ -6,21 +6,29 @@ The wallet client provides essential functionalities such as wallet creation, ad
 
 ![screenshot](screenshot.png "GUI Screenshot")
 
+---
 
 ## Important Note from Developer
 
-**Denaro's active development has been moved to this Github repository: https://github.com/The-Sycorax/denaro**
+> [!IMPORTANT]
+>
+> **Active development for Denaro has also been moved to: https://github.com/The-Sycorax/denaro**
 
 **Some users and I have been coordinating a revival effort for Denaro, and substantial updates have been made to it's codebase in the above repository. However, Denaro's original upstream repository has yet to be updated, but a pull request is planned for the future.**
 
 **If you want to operate a Denaro node, please use the code and instructions from the repository linked above.**
 
 ### Links:
-* **New Website: [https://denaro.mine.bz](https://denaro.mine.bz/)**
-* **Denaro Node: [https://node.denaro.network](https://node.denaro.network/)**
-* **Block Explorer: [https://denaro-explorer.aldgram-solutions.fr](https://denaro-explorer.aldgram-solutions.fr/)**
+* **Denaro Nodes:**
+  * **[https://node.denaro.network](https://node.denaro.network/)** ![Website](https://img.shields.io/website?url=https%3A%2F%2Fnode.denaro.network%2Fdocs&up_message=ONLINE&down_message=OFFLINE&style=flat&label=%20)
+
+  * **[https://node-2.denaro.network](https://node-2.denaro.network/)** ![Website](https://img.shields.io/website?url=https%3A%2F%2Fnode-2.denaro.network%2Fdocs&up_message=ONLINE&down_message=OFFLINE&style=flat&label=%20)
+
 * **Discord Server: [https://discord.gg/4Sq2dK4KMv](https://discord.gg/4Sq2dK4KMv)**
 
+*The information and links above may be periodically updated when needed.*
+
+---
 
 ## Installation Guide
 *Note: The Denaro Wallet Client has not been tested on Windows or MacOS and support is unknown at this time. It is reccomended to use the wallet client on Ubuntu/Debian Linux to avoid any compatibility or stability issues.*
